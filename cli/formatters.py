@@ -1,0 +1,373 @@
+"""
+Output formatting utilities for the CLI interface.
+
+This module provides functions for formatting output, setting up logging,
+and displaying data in various formats (table, CSV, JSON).
+"""
+
+import sys
+import logging
+import json
+import csv
+from typing import List, Dict, Any, Optional, Union, TextIO
+from decimal import Decimal
+from datetime import datetime
+from pathlib import Path
+
+import click
+
+
+def setup_logging(verbose: bool = False, quiet: bool = False) -> None:
+    """
+    Setup logging configuration for the CLI application.
+    
+    Args:
+        verbose: Enable verbose (DEBUG) logging
+        quiet: Suppress non-essential output (WARNING+ only)
+    """
+    if quiet:
+        level = logging.WARNING
+    elif verbose:
+        level = logging.DEBUG
+    else:
+        level = logging.INFO
+    
+    # Configure root logger
+    logging.basicConfig(
+        level=level,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    
+    # Suppress verbose output from third-party libraries unless in debug mode
+    if not verbose:
+        logging.getLogger('urllib3').setLevel(logging.WARNING)
+        logging.getLogger('requests').setLevel(logging.WARNING)
+
+
+def format_currency(amount: Union[Decimal, float, int]) -> str:
+    """
+    Format a numeric amount as currency.
+    
+    Args:
+        amount: Numeric amount to format
+        
+    Returns:
+        Formatted currency string
+    """
+    if amount is None:
+        return "N/A"
+    
+    try:
+        return f"${float(amount):.2f}"
+    except (ValueError, TypeError):
+        return str(amount)
+
+
+def format_datetime(dt: Optional[datetime], format_str: str = "%Y-%m-%d %H:%M:%S") -> str:
+    """
+    Format a datetime object as a string.
+    
+    Args:
+        dt: Datetime object to format
+        format_str: Format string for datetime formatting
+        
+    Returns:
+        Formatted datetime string or "N/A" if None
+    """
+    if dt is None:
+        return "N/A"
+    
+    try:
+        return dt.strftime(format_str)
+    except (ValueError, AttributeError):
+        return str(dt)
+
+
+def format_boolean(value: Optional[bool]) -> str:
+    """
+    Format a boolean value for display.
+    
+    Args:
+        value: Boolean value to format
+        
+    Returns:
+        "Yes", "No", or "N/A"
+    """
+    if value is None:
+        return "N/A"
+    return "Yes" if value else "No"
+
+
+def truncate_text(text: Optional[str], max_length: int = 50) -> str:
+    """
+    Truncate text to a maximum length with ellipsis.
+    
+    Args:
+        text: Text to truncate
+        max_length: Maximum length before truncation
+        
+    Returns:
+        Truncated text with ellipsis if needed
+    """
+    if not text:
+        return ""
+    
+    if len(text) <= max_length:
+        return text
+    
+    return text[:max_length - 3] + "..."
+
+
+def format_table(data: List[Dict[str, Any]], headers: Optional[List[str]] = None,
+                 tablefmt: str = "grid") -> str:
+    """
+    Format data as a table using tabulate.
+    
+    Args:
+        data: List of dictionaries containing row data
+        headers: Optional list of column headers
+        tablefmt: Table format style
+        
+    Returns:
+        Formatted table string
+    """
+    if not data:
+        return "No data to display."
+    
+    try:
+        from tabulate import tabulate
+        
+        if headers is None:
+            headers = list(data[0].keys()) if data else []
+        
+        # Convert data to list of lists for tabulate
+        rows = []
+        for row in data:
+            formatted_row = []
+            for header in headers:
+                value = row.get(header, "")
+                
+                # Format special types
+                if isinstance(value, (Decimal, float)) and header.lower() in ['price', 'amount', 'cost']:
+                    formatted_row.append(format_currency(value))
+                elif isinstance(value, datetime):
+                    formatted_row.append(format_datetime(value))
+                elif isinstance(value, bool):
+                    formatted_row.append(format_boolean(value))
+                elif isinstance(value, str) and len(value) > 50:
+                    formatted_row.append(truncate_text(value))
+                else:
+                    formatted_row.append(str(value) if value is not None else "")
+            
+            rows.append(formatted_row)
+        
+        return tabulate(rows, headers=headers, tablefmt=tablefmt)
+    
+    except ImportError:
+        # Fallback to simple formatting if tabulate is not available
+        return format_simple_table(data, headers)
+
+
+def format_simple_table(data: List[Dict[str, Any]], headers: Optional[List[str]] = None) -> str:
+    """
+    Simple table formatting fallback when tabulate is not available.
+    
+    Args:
+        data: List of dictionaries containing row data
+        headers: Optional list of column headers
+        
+    Returns:
+        Simple formatted table string
+    """
+    if not data:
+        return "No data to display."
+    
+    if headers is None:
+        headers = list(data[0].keys()) if data else []
+    
+    # Calculate column widths
+    col_widths = {}
+    for header in headers:
+        col_widths[header] = len(header)
+        for row in data:
+            value = str(row.get(header, ""))
+            col_widths[header] = max(col_widths[header], len(value))
+    
+    # Build table
+    lines = []
+    
+    # Header
+    header_line = " | ".join(header.ljust(col_widths[header]) for header in headers)
+    lines.append(header_line)
+    lines.append("-" * len(header_line))
+    
+    # Data rows
+    for row in data:
+        row_line = " | ".join(
+            str(row.get(header, "")).ljust(col_widths[header]) 
+            for header in headers
+        )
+        lines.append(row_line)
+    
+    return "\n".join(lines)
+
+
+def format_json(data: Any, indent: int = 2) -> str:
+    """
+    Format data as JSON string.
+    
+    Args:
+        data: Data to format as JSON
+        indent: JSON indentation level
+        
+    Returns:
+        Formatted JSON string
+    """
+    def json_serializer(obj):
+        """Custom JSON serializer for special types."""
+        if isinstance(obj, Decimal):
+            return float(obj)
+        elif isinstance(obj, datetime):
+            return obj.isoformat()
+        elif hasattr(obj, 'to_dict'):
+            return obj.to_dict()
+        raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+    
+    try:
+        return json.dumps(data, indent=indent, default=json_serializer, ensure_ascii=False)
+    except TypeError as e:
+        return f"Error formatting JSON: {e}"
+
+
+def write_csv(data: List[Dict[str, Any]], output_file: Union[str, Path, TextIO],
+              headers: Optional[List[str]] = None) -> None:
+    """
+    Write data to a CSV file.
+    
+    Args:
+        data: List of dictionaries containing row data
+        output_file: Output file path or file object
+        headers: Optional list of column headers
+    """
+    if not data:
+        return
+    
+    if headers is None:
+        headers = list(data[0].keys()) if data else []
+    
+    # Handle file path or file object
+    if isinstance(output_file, (str, Path)):
+        with open(output_file, 'w', newline='', encoding='utf-8') as f:
+            _write_csv_to_file(data, f, headers)
+    else:
+        _write_csv_to_file(data, output_file, headers)
+
+
+def _write_csv_to_file(data: List[Dict[str, Any]], file_obj: TextIO, headers: List[str]) -> None:
+    """
+    Internal function to write CSV data to a file object.
+    
+    Args:
+        data: List of dictionaries containing row data
+        file_obj: File object to write to
+        headers: List of column headers
+    """
+    writer = csv.DictWriter(file_obj, fieldnames=headers)
+    writer.writeheader()
+    
+    for row in data:
+        # Convert special types for CSV output
+        csv_row = {}
+        for header in headers:
+            value = row.get(header)
+            
+            if isinstance(value, Decimal):
+                csv_row[header] = float(value)
+            elif isinstance(value, datetime):
+                csv_row[header] = value.isoformat()
+            elif value is None:
+                csv_row[header] = ""
+            else:
+                csv_row[header] = str(value)
+        
+        writer.writerow(csv_row)
+
+
+def print_success(message: str) -> None:
+    """Print a success message with green checkmark."""
+    click.echo(click.style(f"✓ {message}", fg='green'))
+
+
+def print_warning(message: str) -> None:
+    """Print a warning message with yellow warning symbol."""
+    click.echo(click.style(f"⚠ Warning: {message}", fg='yellow'))
+
+
+def print_error(message: str) -> None:
+    """Print an error message with red X symbol."""
+    click.echo(click.style(f"✗ Error: {message}", fg='red'), err=True)
+
+
+def print_info(message: str) -> None:
+    """Print an info message with blue info symbol."""
+    click.echo(click.style(f"ℹ {message}", fg='blue'))
+
+
+def confirm_action(message: str, default: bool = False) -> bool:
+    """
+    Prompt user for confirmation.
+    
+    Args:
+        message: Confirmation message
+        default: Default value if user just presses Enter
+        
+    Returns:
+        True if user confirms, False otherwise
+    """
+    return click.confirm(message, default=default)
+
+
+def prompt_for_input(message: str, default: Optional[str] = None, 
+                    hide_input: bool = False, type=None) -> Any:
+    """
+    Prompt user for input with optional default and type conversion.
+    
+    Args:
+        message: Prompt message
+        default: Default value if user just presses Enter
+        hide_input: Hide input (for passwords)
+        type: Click type for input validation
+        
+    Returns:
+        User input with appropriate type conversion
+    """
+    return click.prompt(message, default=default, hide_input=hide_input, type=type)
+
+
+def display_summary(title: str, stats: Dict[str, Any]) -> None:
+    """
+    Display a formatted summary with title and statistics.
+    
+    Args:
+        title: Summary title
+        stats: Dictionary of statistics to display
+    """
+    click.echo(f"\n{title}")
+    click.echo("=" * len(title))
+    
+    for key, value in stats.items():
+        # Format the key (convert underscores to spaces and title case)
+        formatted_key = key.replace('_', ' ').title()
+        
+        # Format the value based on type
+        if isinstance(value, (Decimal, float)) and 'price' in key.lower():
+            formatted_value = format_currency(value)
+        elif isinstance(value, datetime):
+            formatted_value = format_datetime(value)
+        elif isinstance(value, bool):
+            formatted_value = format_boolean(value)
+        else:
+            formatted_value = str(value)
+        
+        click.echo(f"  {formatted_key}: {formatted_value}")
