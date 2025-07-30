@@ -13,8 +13,11 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
 else
     EXPECTED_LOCATION="$HOME/.local/bin/InvoiceRateDetector"
 fi
-LAUNCHER_URL="https://raw.githubusercontent.com/your-repo/invoice_line_cost_detection/main/invoice-launcher.sh"
 PROJECT_DIR="invoice_line_cost_detection"
+LAUNCHER_URL="https://raw.githubusercontent.com/Nuosis/invoice_line_cost_detection/main/invoice-launcher.sh"
+
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Colors for output
 RED='\033[0;31m'
@@ -75,8 +78,8 @@ main() {
         if [[ -f "invoice-launcher.sh" ]]; then
             ./invoice-launcher.sh
         else
-            log_warning "Launcher script not found. Downloading..."
-            download_launcher
+            log_warning "Launcher script not found. Setting up..."
+            setup_installation
         fi
     else
         log_info "No existing installation found."
@@ -88,12 +91,39 @@ main() {
         # Change to the expected location
         cd "$EXPECTED_LOCATION"
         
+        setup_installation
+    fi
+}
+
+setup_installation() {
+    # First try to copy from local source if available
+    if [[ -f "$SCRIPT_DIR/invoice-launcher.sh" ]]; then
+        log_info "Copying launcher script from local source..."
+        copy_from_local
+    else
+        log_info "Local source not found. Downloading from GitHub..."
+        download_launcher
+    fi
+}
+
+copy_from_local() {
+    # Copy the launcher script
+    if cp "$SCRIPT_DIR/invoice-launcher.sh" "invoice-launcher.sh"; then
+        chmod +x "invoice-launcher.sh"
+        log_success "Launcher script copied successfully."
+        log_info "Starting setup process..."
+        
+        # Run the launcher script
+        ./invoice-launcher.sh
+    else
+        log_error "Failed to copy launcher script from local source."
+        log_info "Falling back to download from GitHub..."
         download_launcher
     fi
 }
 
 download_launcher() {
-    log_info "Downloading launcher script..."
+    log_info "Downloading launcher script from GitHub..."
     
     # Check if curl is available
     if ! command_exists curl; then
@@ -113,6 +143,7 @@ download_launcher() {
     else
         log_error "Failed to download launcher script."
         log_info "Please check your internet connection and try again."
+        log_info "Manual download URL: $LAUNCHER_URL"
         exit 1
     fi
 }

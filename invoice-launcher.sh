@@ -89,7 +89,13 @@ check_requirements() {
     
     # Check Python version
     python_version=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
-    if [[ $(echo "$python_version 3.8" | awk '{print ($1 >= $2)}') -eq 0 ]]; then
+    required_version="3.8"
+    
+    # Convert versions to comparable format (e.g., 3.13 -> 313, 3.8 -> 308)
+    current_ver=$(echo "$python_version" | awk -F. '{printf "%d%02d", $1, $2}')
+    required_ver=$(echo "$required_version" | awk -F. '{printf "%d%02d", $1, $2}')
+    
+    if [[ $current_ver -lt $required_ver ]]; then
         log_error "Python 3.8 or higher is required. Current version: $python_version"
         exit 1
     fi
@@ -373,13 +379,9 @@ process_invoices() {
     
     # Interactive mode with discovery
     log_info "Starting interactive processing with discovery..."
-    echo -e "${YELLOW}Please select your invoice folder when prompted${NC}"
     
-    # Run discovery first
-    uv run invoice-checker discover --interactive
-    
-    # Then process invoices
-    uv run invoice-checker process --interactive
+    # Run interactive processing (this handles discovery automatically)
+    uv run invoice-checker invoice interactive
     
     # Run backup if database changed
     run_backup
@@ -550,6 +552,68 @@ setup_workflow() {
     esac
 }
 
+# Show help and documentation
+show_help() {
+    log_info "Displaying help and documentation..."
+    
+    echo -e "${CYAN}╔══════════════════════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║                         HELP & DOCUMENTATION                                 ║${NC}"
+    echo -e "${CYAN}╚══════════════════════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    
+    echo -e "${GREEN}OVERVIEW${NC}"
+    echo "The Clarity Invoice Validator is an advanced invoice rate detection system"
+    echo "designed to help businesses identify pricing anomalies in their invoices."
+    echo ""
+    
+    echo -e "${GREEN}MAIN FEATURES${NC}"
+    echo "• Process Invoices: Analyze PDF invoices for pricing discrepancies"
+    echo "• Manage Parts: Maintain a database of parts with authorized prices"
+    echo "• Database Management: Backup, restore, and maintain your data"
+    echo "• Interactive Discovery: Automatically discover new parts from invoices"
+    echo ""
+    
+    echo -e "${GREEN}GETTING STARTED${NC}"
+    echo "1. First time users should run 'Setup' to install and configure the system"
+    echo "2. Add parts to your database using 'Manage Parts'"
+    echo "3. Process invoices using 'Process Invoices' for interactive analysis"
+    echo "4. Review generated reports in CSV format (can be opened in Excel)"
+    echo ""
+    
+    echo -e "${GREEN}WORKFLOW TIPS${NC}"
+    echo "• Start with a small batch of invoices to test the system"
+    echo "• Use interactive discovery to build your parts database quickly"
+    echo "• Regular backups are automatically configured but can be run manually"
+    echo "• Reports are saved in the project directory and can be opened in Excel"
+    echo ""
+    
+    echo -e "${GREEN}TROUBLESHOOTING${NC}"
+    echo "• If processing fails, check that PDF files are readable and not encrypted"
+    echo "• Ensure Python 3.8+ and UV package manager are installed"
+    echo "• Use 'Setup > Verify system status' to check for issues"
+    echo "• Database backups are created automatically before major operations"
+    echo ""
+    
+    echo -e "${GREEN}SUPPORT${NC}"
+    echo "• Documentation: Check the docs/ folder in the project directory"
+    echo "• User Manual: docs/USER_MANUAL.md contains detailed instructions"
+    echo "• Contact: marcus@claritybusinesssolutions.ca"
+    echo "• GitHub: https://github.com/Nuosis/invoice_line_cost_detection"
+    echo ""
+    
+    if check_project_exists; then
+        echo -e "${GREEN}QUICK COMMANDS${NC}"
+        echo "You can also run commands directly from the project directory:"
+        echo "• cd $PROJECT_DIR"
+        echo "• uv run invoice-checker status          # Check system status"
+        echo "• uv run invoice-checker parts list      # List all parts"
+        echo "• uv run invoice-checker --help          # Show CLI help"
+        echo ""
+    fi
+    
+    read -p "Press Enter to continue..."
+}
+
 # Main menu
 show_main_menu() {
     echo -e "${CYAN}╔══════════════════════════════════════════════════════════════════════════════╗${NC}"
@@ -560,7 +624,8 @@ show_main_menu() {
     echo -e "${GREEN}2)${NC} Manage Parts        - Add, update, import/export parts database"
     echo -e "${GREEN}3)${NC} Manage Database     - Backup, restore, and maintain database"
     echo -e "${GREEN}4)${NC} Setup               - Install, update, and configure system"
-    echo -e "${GREEN}5)${NC} Exit                - Exit the application"
+    echo -e "${GREEN}5)${NC} Help                - Show help and documentation"
+    echo -e "${GREEN}6)${NC} Exit                - Exit the application"
     echo ""
 }
 
@@ -614,7 +679,7 @@ main() {
         show_banner
         show_main_menu
         
-        read -p "Select option (1-5): " choice
+        read -p "Select option (1-6): " choice
         
         case $choice in
             1)
@@ -634,11 +699,14 @@ main() {
                 read -p "Press Enter to continue..."
                 ;;
             5)
+                show_help
+                ;;
+            6)
                 log_info "Thank you for using Invoice Rate Detection System!"
                 exit 0
                 ;;
             *)
-                log_error "Invalid option. Please select 1-5."
+                log_error "Invalid option. Please select 1-6."
                 read -p "Press Enter to continue..."
                 ;;
         esac
