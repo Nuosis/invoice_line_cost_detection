@@ -205,7 +205,7 @@ update_project() {
     
     # Pull latest changes
     git fetch origin
-    git reset --hard origin/main
+    git reset --hard origin/master
     
     # Update dependencies
     uv sync
