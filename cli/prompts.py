@@ -30,7 +30,7 @@ def prompt_for_input_path(message: str = "Enter path to folder containing PDF in
         must_exist: Whether the path must exist
         
     Returns:
-        Validated Path object
+        Validated Path object (always returns a directory)
         
     Raises:
         UserCancelledError: If user cancels input
@@ -41,7 +41,15 @@ def prompt_for_input_path(message: str = "Enter path to folder containing PDF in
             if not path_str.strip():
                 raise ValidationError("Path cannot be empty")
             
-            path = Path(path_str.strip()).expanduser().resolve()
+            # Handle escaped spaces, quotes, and expand user/resolve path
+            path_str = path_str.strip()
+            # Remove quotes if present
+            if (path_str.startswith('"') and path_str.endswith('"')) or \
+               (path_str.startswith("'") and path_str.endswith("'")):
+                path_str = path_str[1:-1]
+            # Remove shell escaping (backslashes before spaces)
+            path_str = path_str.replace('\\ ', ' ')
+            path = Path(path_str).expanduser().resolve()
             
             if must_exist and not path.exists():
                 print_warning(f"Path does not exist: {path}")
@@ -49,7 +57,62 @@ def prompt_for_input_path(message: str = "Enter path to folder containing PDF in
                     raise UserCancelledError()
                 continue
             
-            return path
+            # If user provided a file path, offer options
+            if path.is_file():
+                if path.suffix.lower() == '.pdf':
+                    parent_dir = path.parent
+                    print_info(f"You provided a PDF file: {path.name}")
+                    
+                    # Check if parent directory has other PDF files
+                    pdf_files = list(parent_dir.glob("*.pdf"))
+                    other_pdfs = [f for f in pdf_files if f != path]
+                    
+                    if other_pdfs:
+                        print_info(f"Found {len(other_pdfs)} other PDF files in the same directory")
+                        choices = [
+                            f"Process only this file ({path.name})",
+                            f"Process all {len(pdf_files)} PDF files in {parent_dir.name}",
+                            "Choose a different path"
+                        ]
+                        
+                        choice = prompt_for_choice("What would you like to do?", choices, default=choices[0])
+                        
+                        if choice.startswith("Process only this file"):
+                            # Return a special marker that indicates single file processing
+                            # We'll store the original file path in a way the caller can detect
+                            path._single_file_mode = True
+                            path._original_file = path
+                            return path.parent
+                        elif choice.startswith("Process all"):
+                            return parent_dir
+                        else:  # Choose different path
+                            continue
+                    else:
+                        print_info("This is the only PDF file in the directory")
+                        if click.confirm(f"Process this single file ({path.name})?", default=True):
+                            # Return a special marker that indicates single file processing
+                            path._single_file_mode = True
+                            path._original_file = path
+                            return path.parent
+                        else:
+                            print_info("Please provide a folder path instead")
+                            continue
+                else:
+                    print_warning("Please provide either a PDF file or a folder containing PDF files")
+                    continue
+            
+            # If it's a directory, validate it has PDF files
+            if path.is_dir():
+                pdf_files = list(path.glob("*.pdf"))
+                if not pdf_files:
+                    print_warning(f"No PDF files found in {path}")
+                    if not click.confirm("Continue anyway?", default=False):
+                        continue
+                return path
+            
+            # If we get here, something unexpected happened
+            print_warning("Please provide a valid file or directory path")
+            continue
             
         except ValidationError as e:
             print_warning(str(e))

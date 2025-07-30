@@ -68,11 +68,15 @@ def process(ctx, input_path, output, format, interactive, collect_unknown,
     """
     Process invoices with parts-based validation (primary command).
     
-    This is the main command for processing PDF invoices and detecting
-    pricing anomalies using the master parts database.
+    This command processes either a single PDF invoice file or a folder
+    containing multiple PDF invoices, detecting pricing anomalies using
+    the master parts database.
     
     Examples:
-        # Basic processing with interactive discovery
+        # Process a single PDF file
+        invoice-checker process invoice.pdf --output single_report.csv
+        
+        # Process a folder with interactive discovery
         invoice-checker process ./invoices --interactive
         
         # Collect unknown parts without validation
@@ -219,13 +223,16 @@ def collect_unknowns(ctx, input_path, output, suggest_prices):
     """
     Process invoices and collect unknown parts without validation.
     
-    This command extracts all parts from invoices and identifies
-    which ones are not in the master parts database, useful for
-    building the parts database.
+    This command extracts all parts from invoices (single file or folder)
+    and identifies which ones are not in the master parts database,
+    useful for building the parts database.
     
     Examples:
-        # Collect unknown parts
+        # Collect unknown parts from a folder
         invoice-checker collect-unknowns ./invoices
+        
+        # Collect unknown parts from a single file
+        invoice-checker collect-unknowns invoice.pdf
         
         # Include price suggestions
         invoice-checker collect-unknowns ./invoices --suggest-prices
@@ -273,14 +280,22 @@ def run_interactive_processing(ctx, preset=None, save_preset=None):
         print_info("Step 1: Select invoice folder")
         input_path = prompt_for_input_path()
         
-        # Validate input folder has PDF files
-        pdf_files = list(input_path.glob("*.pdf"))
-        if not pdf_files:
-            print_warning(f"No PDF files found in {input_path}")
-            if not click.confirm("Continue anyway?", default=False):
-                raise UserCancelledError()
+        # Check if single file mode was requested
+        single_file_mode = hasattr(input_path, '_single_file_mode') and input_path._single_file_mode
+        original_file = getattr(input_path, '_original_file', None) if single_file_mode else None
+        
+        if single_file_mode and original_file:
+            print_info(f"Processing single file: {original_file.name}")
+            pdf_files = [original_file]
         else:
-            print_info(f"Found {len(pdf_files)} PDF files")
+            # Validate input folder has PDF files
+            pdf_files = list(input_path.glob("*.pdf"))
+            if not pdf_files:
+                print_warning(f"No PDF files found in {input_path}")
+                if not click.confirm("Continue anyway?", default=False):
+                    raise UserCancelledError()
+            else:
+                print_info(f"Found {len(pdf_files)} PDF files")
         
         # Step 2: Get output settings
         print_info("Step 2: Configure output")
@@ -308,8 +323,16 @@ def run_interactive_processing(ctx, preset=None, save_preset=None):
         session_id = str(uuid.uuid4())
         db_manager = ctx.get_db_manager()
         
+        # Pass the specific files to process if in single file mode
+        if single_file_mode and original_file:
+            # Create a custom input path that includes the file list
+            custom_input = input_path
+            custom_input._pdf_files_override = pdf_files
+        else:
+            custom_input = input_path
+            
         results = _process_invoices(
-            input_path=input_path,
+            input_path=custom_input,
             output_path=output_path,
             output_format=output_format,
             validation_mode=validation_mode,
@@ -353,15 +376,26 @@ def _discover_pdf_files(input_path: Path) -> List[Path]:
     Raises:
         ProcessingError: If no PDF files are found
     """
+    # Check if we have a PDF files override (for single file mode from interactive prompts)
+    if hasattr(input_path, '_pdf_files_override'):
+        pdf_files = input_path._pdf_files_override
+        print_info(f"Using specified PDF files: {len(pdf_files)} files to process")
+        return pdf_files
+    
+    # Handle single file input
     if input_path.is_file():
-        pdf_files = [input_path] if input_path.suffix.lower() == '.pdf' else []
+        if input_path.suffix.lower() == '.pdf':
+            pdf_files = [input_path]
+            print_info(f"Processing single PDF file: {input_path.name}")
+        else:
+            raise ProcessingError(f"File is not a PDF: {input_path}")
+    # Handle directory input
     else:
         pdf_files = list(input_path.glob("*.pdf"))
+        if not pdf_files:
+            raise ProcessingError(f"No PDF files found in directory: {input_path}")
+        print_info(f"Found {len(pdf_files)} PDF files to process in directory: {input_path.name}")
     
-    if not pdf_files:
-        raise ProcessingError(f"No PDF files found in {input_path}")
-    
-    print_info(f"Found {len(pdf_files)} PDF files to process")
     return pdf_files
 
 
@@ -698,16 +732,11 @@ def _collect_unknown_parts(input_path: Path, output_path: Path,
     """Collect unknown parts from invoices using the validation engine."""
     print_info("Starting unknown parts collection...")
     
-    # Find PDF files
-    if input_path.is_file():
-        pdf_files = [input_path] if input_path.suffix.lower() == '.pdf' else []
-    else:
-        pdf_files = list(input_path.glob("*.pdf"))
-    
-    if not pdf_files:
-        raise ProcessingError(f"No PDF files found in {input_path}")
-    
-    print_info(f"Found {len(pdf_files)} PDF files to process")
+    # Use the same PDF discovery logic as the main processing
+    try:
+        pdf_files = _discover_pdf_files(input_path)
+    except ProcessingError as e:
+        raise ProcessingError(f"Failed to find PDF files: {e}")
     
     try:
         # Create validation configuration for unknown parts collection

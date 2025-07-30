@@ -24,12 +24,16 @@ flowchart TD
     H -->|config| M[Configuration Flow]
     
     I --> I1[Validate input parameters]
-    I1 --> I2[Initialize validation engine]
-    I2 --> I3[Process invoices with parts-based validation]
-    I3 --> I4[Handle unknown parts discovery]
-    I4 --> I5[Generate comprehensive report]
-    I5 --> I6[Display processing summary]
-    I6 --> N[User reviews results]
+    I1 --> I2{Input type?}
+    I2 -->|Single PDF file| I2A[Process single invoice file]
+    I2 -->|Folder| I2B[Process folder of invoices]
+    I2A --> I3[Initialize validation engine]
+    I2B --> I3
+    I3 --> I4[Process invoices with parts-based validation]
+    I4 --> I5[Handle unknown parts discovery]
+    I5 --> I6[Generate comprehensive report]
+    I6 --> I7[Display processing summary]
+    I7 --> N[User reviews results]
     
     J --> J1[Execute parts operation]
     J1 --> N
@@ -50,7 +54,12 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[User starts processing] --> B[Check if parts database exists]
+    A[User starts processing] --> A1{Input type?}
+    A1 -->|Single PDF| A2[Validate single PDF file]
+    A1 -->|Folder| A3[Validate folder contains PDFs]
+    A2 --> B[Check if parts database exists]
+    A3 --> B
+    
     B -->|No| C[Create empty database]
     B -->|Yes| D[Load existing database]
     
@@ -214,6 +223,53 @@ flowchart TD
     P --> S[User contacts support or fixes issue]
 ```
 
+## Single File Processing Flow
+
+```mermaid
+flowchart TD
+    A[User has single PDF invoice] --> B[Open terminal/command prompt]
+    B --> C[Navigate to application directory]
+    C --> D[Run: uv run invoice-checker process invoice.pdf]
+    D --> E[System validates PDF file]
+    E --> F{PDF validation result?}
+    
+    F -->|Valid PDF| G[Initialize processing engine]
+    F -->|Invalid PDF| H[Display error message]
+    F -->|File not found| I[Display file not found error]
+    
+    H --> J[User corrects file path/format]
+    I --> J
+    J --> D
+    
+    G --> K[Extract invoice data from PDF]
+    K --> L[Load parts database]
+    L --> M[Process line items]
+    M --> N{Unknown parts found?}
+    
+    N -->|Yes, Interactive mode| O[Prompt user for each unknown part]
+    N -->|Yes, Batch mode| P[Collect unknown parts for later]
+    N -->|No unknown parts| Q[Validate all parts against database]
+    
+    O --> O1{User choice for each part?}
+    O1 -->|Add now| O2[Add part to database]
+    O1 -->|Skip| O3[Continue without adding]
+    O1 -->|Review later| P
+    
+    O2 --> Q
+    O3 --> Q
+    P --> Q
+    
+    Q --> R[Generate validation report]
+    R --> S[Save report to specified output file]
+    S --> T[Display processing summary]
+    T --> U[User opens report in Excel/Notepad]
+    
+    U --> V{Satisfied with results?}
+    V -->|Yes| W[Processing complete]
+    V -->|No| X[Process another file or adjust settings]
+    X --> A
+```
+
 ## Configuration and Setup Flow
 
 ```mermaid
@@ -304,10 +360,10 @@ flowchart TD
 ## Flow Descriptions
 
 ### Primary User Flow
-The main workflow for invoice processing using the modern CLI system with comprehensive parts-based validation and interactive discovery features.
+The main workflow for invoice processing using the modern CLI system with comprehensive parts-based validation and interactive discovery features. Now supports both single file and folder processing.
 
 ### Advanced User Flow
-The comprehensive workflow for parts-based validation with interactive discovery, representing the full feature set of the modern CLI system.
+The comprehensive workflow for parts-based validation with interactive discovery, representing the full feature set of the modern CLI system. Includes support for processing individual PDF files or entire folders.
 
 ### Database Management Flow
 Comprehensive workflow for managing the parts database, including adding, updating, importing, and maintaining parts data through the modern CLI interface.
@@ -317,6 +373,9 @@ Workflow for processing multiple folders of invoices simultaneously, with option
 
 ### Error Handling and Recovery Flow
 System behavior when encountering various types of errors, with automatic recovery mechanisms, user guidance, and centralized error handling.
+
+### Single File Processing Flow
+Dedicated workflow for processing individual PDF invoice files, showing the complete process from file validation through report generation. This flow demonstrates how the system handles single files differently from batch processing, including specific error handling and user interaction patterns.
 
 ### Configuration and Setup Flow
 Initial setup process for new users, including installation verification, basic configuration, and modern CLI system initialization.

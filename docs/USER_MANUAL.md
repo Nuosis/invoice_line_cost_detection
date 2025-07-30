@@ -300,6 +300,36 @@ uv run invoice-checker process ./invoices --interactive --output report.csv
 
 # Process a single invoice file
 uv run invoice-checker process invoice.pdf --output single_report.csv
+
+# Process a single file with interactive discovery
+uv run invoice-checker process invoice.pdf --interactive --output report.csv
+
+# Process a single file with custom threshold
+uv run invoice-checker process invoice.pdf --threshold 0.20 --output report.csv
+```
+
+### Single File Processing
+
+The system supports processing individual PDF invoice files, which is particularly useful for:
+- **Urgent invoice validation**: Quick processing of time-sensitive invoices
+- **Problem file troubleshooting**: Isolating and debugging specific invoice issues
+- **New supplier testing**: Testing invoices from new suppliers before batch processing
+- **Interactive part discovery**: Adding new parts with immediate feedback
+
+#### Single File Examples
+
+```bash
+# Basic single file processing
+uv run invoice-checker process invoice_001.pdf --output report.csv
+
+# Single file with JSON output
+uv run invoice-checker process invoice_001.pdf --format json --output report.json
+
+# Single file with threshold validation
+uv run invoice-checker process invoice_001.pdf --validation-mode threshold_based --threshold 0.15
+
+# Collect unknown parts from single file
+uv run invoice-checker collect-unknowns problem_invoice.pdf --suggest-prices --output unknowns.csv
 ```
 
 ### Advanced Processing Options
@@ -350,10 +380,16 @@ When processing invoices, you may encounter parts not in your database:
 3. **Collection Only Mode**: Just identifies unknown parts without validation
 
 ```bash
-# Collect unknown parts without processing
+# Collect unknown parts from single file
+uv run invoice-checker collect-unknowns invoice.pdf --output single_unknowns.csv
+
+# Collect unknown parts from folder
 uv run invoice-checker collect-unknowns ./invoices --output unknown_parts.csv
 
-# Include price suggestions based on invoice data
+# Include price suggestions for single file
+uv run invoice-checker collect-unknowns invoice.pdf --suggest-prices --output unknowns_with_prices.csv
+
+# Include price suggestions for folder
 uv run invoice-checker collect-unknowns ./invoices --suggest-prices --output unknown_parts.csv
 ```
 
@@ -399,6 +435,17 @@ uv run invoice-checker discovery stats --days 7
 3. **Review and add unknown parts** as prompted
 4. **Check the generated report** for anomalies
 5. **Archive processed invoices** to avoid reprocessing
+
+#### Single File Processing Workflow
+
+1. **Identify the specific invoice** that needs processing
+2. **Process the individual file**:
+   ```bash
+   uv run invoice-checker process urgent_invoice.pdf --interactive --output urgent_report.csv
+   ```
+3. **Review results immediately** for quick decision making
+4. **Add any unknown parts** discovered during processing
+5. **Move processed file** to appropriate folder
 
 #### Weekly Review Workflow
 
@@ -863,7 +910,7 @@ uv run invoice-checker status --verbose
 ### Invoice Processing Commands
 
 ```bash
-# Process invoices
+# Process invoices (single file or folder)
 invoice-checker process <input_path> [options]
   --output, -o          Output file path
   --format, -f          Output format (csv, txt, json)
@@ -872,6 +919,10 @@ invoice-checker process <input_path> [options]
   --validation-mode     Validation mode (parts_based, threshold_based)
   --threshold, -t       Threshold for threshold-based mode
 
+# Examples:
+# Single file: invoice-checker process invoice.pdf --output report.csv
+# Folder:      invoice-checker process ./invoices --output report.csv
+
 # Batch processing
 invoice-checker batch <input_path> [options]
   --output-dir, -o      Output directory
@@ -879,10 +930,14 @@ invoice-checker batch <input_path> [options]
   --max-workers         Maximum worker threads
   --continue-on-error   Continue if folders fail
 
-# Collect unknown parts
+# Collect unknown parts (single file or folder)
 invoice-checker collect-unknowns <input_path> [options]
   --output, -o          Output file
   --suggest-prices      Include price suggestions
+
+# Examples:
+# Single file: invoice-checker collect-unknowns invoice.pdf --output unknowns.csv
+# Folder:      invoice-checker collect-unknowns ./invoices --output unknowns.csv
 ```
 
 ### Parts Management Commands

@@ -6,6 +6,8 @@ PYTHONPATH=. uv run python e2e_tests/[[test to run]]
 eg...
 PYTHONPATH=. uv run pytest e2e_tests/test_initial_database_setup.py -v
 
+real invoice for testing are available at ~/docs/invoices/
+
 ### NO MOCKING POLICY
 - **MOCKING IS STRICTLY PROHIBITED** in all e2e tests
 - Tests must use real database connections, file systems, and external dependencies

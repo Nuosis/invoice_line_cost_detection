@@ -390,7 +390,7 @@ class ValidationWorkflowManager:
         self.logger.info(f"Starting batch processing of {len(invoice_paths)} invoices")
         
         # Initialize progress tracking
-        progress = ProgressTracker(total=len(invoice_paths), description="Processing invoices")
+        progress = ProgressTracker(total_items=len(invoice_paths), label="Processing invoices")
         
         # Process all invoices
         validation_results = []
@@ -398,7 +398,7 @@ class ValidationWorkflowManager:
         
         for i, invoice_path in enumerate(invoice_paths):
             try:
-                progress.update(i, f"Processing {invoice_path.name}")
+                progress.update(1, f"Processing {invoice_path.name}")
                 
                 # Validate single invoice
                 result = self.validation_engine.validate_invoice(invoice_path)
@@ -413,7 +413,8 @@ class ValidationWorkflowManager:
                 # Continue with next invoice
                 continue
         
-        progress.finish("Invoice processing completed")
+        # Progress tracking completed - no finish method needed for ProgressTracker
+        self.logger.info("Invoice processing completed")
         
         # Handle unknown parts if in interactive mode
         discovery_results = []
