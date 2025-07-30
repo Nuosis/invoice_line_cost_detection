@@ -16,7 +16,7 @@ from .exceptions import PDFProcessingError
 
 # Import existing database models
 try:
-    from database.models import Invoice, InvoiceLineItem, Part
+    from database.models import Part, Configuration, PartDiscoveryLog
     from database.database import DatabaseManager
     HAS_DATABASE = True
 except ImportError:
@@ -118,61 +118,54 @@ class PDFProcessingIntegrator:
         
         return processed_invoices
     
-    def convert_to_database_models(self, invoice_data: InvoiceData) -> Optional[Dict[str, Any]]:
+    def convert_to_parts_data(self, invoice_data: InvoiceData) -> List[Dict[str, Any]]:
         """
-        Convert InvoiceData to database model format.
+        Convert InvoiceData to parts data for database integration.
         
         Args:
             invoice_data: InvoiceData object to convert
             
         Returns:
-            Dictionary containing database model data or None if conversion fails
+            List of dictionaries containing part data for discovery/validation
         """
         if not HAS_DATABASE:
             self.logger.warning("Database models not available")
-            return None
+            return []
         
         try:
-            # Convert to database format
-            db_invoice = {
-                'invoice_number': invoice_data.invoice_number,
-                'invoice_date': invoice_data.invoice_date,
-                'customer_number': invoice_data.customer_number,
-                'customer_name': invoice_data.customer_name,
-                'total_amount': float(invoice_data.get_total_amount() or 0),
-                'subtotal_amount': float(invoice_data.get_subtotal_amount() or 0),
-                'pdf_path': invoice_data.pdf_path,
-                'line_items': []
-            }
+            parts_data = []
             
-            # Convert line items
+            # Extract unique parts from line items
             for line_item in invoice_data.get_valid_line_items():
-                db_line_item = {
+                part_data = {
+                    'part_number': line_item.item_code,
+                    'description': line_item.description,
+                    'discovered_price': float(line_item.rate),
+                    'invoice_number': invoice_data.invoice_number,
+                    'invoice_date': invoice_data.invoice_date,
+                    'quantity': line_item.quantity,
+                    'total': float(line_item.total) if line_item.total else None,
                     'wearer_number': line_item.wearer_number,
                     'wearer_name': line_item.wearer_name,
-                    'item_code': line_item.item_code,
-                    'description': line_item.description,
                     'size': line_item.size,
                     'item_type': line_item.item_type,
-                    'quantity': line_item.quantity,
-                    'rate': float(line_item.rate),
-                    'total': float(line_item.total) if line_item.total else None,
                     'line_number': line_item.line_number
                 }
-                db_invoice['line_items'].append(db_line_item)
+                parts_data.append(part_data)
             
-            return db_invoice
+            return parts_data
             
         except Exception as e:
-            self.logger.error(f"Failed to convert invoice data to database format: {e}")
-            return None
+            self.logger.error(f"Failed to convert invoice data to parts format: {e}")
+            return []
     
-    def save_to_database(self, invoice_data: InvoiceData) -> bool:
+    def log_part_discoveries(self, invoice_data: InvoiceData, session_id: str = None) -> bool:
         """
-        Save invoice data to the database.
+        Log part discoveries from invoice data to the database.
         
         Args:
-            invoice_data: InvoiceData object to save
+            invoice_data: InvoiceData object to process
+            session_id: Optional processing session ID
             
         Returns:
             True if successful, False otherwise
@@ -182,17 +175,43 @@ class PDFProcessingIntegrator:
             return False
         
         try:
-            db_data = self.convert_to_database_models(invoice_data)
-            if not db_data:
+            parts_data = self.convert_to_parts_data(invoice_data)
+            if not parts_data:
                 return False
             
-            # Save to database using existing database manager
-            # This would need to be implemented based on the actual database schema
-            self.logger.info(f"Saved invoice {invoice_data.invoice_number} to database")
+            # Log discoveries for each unique part
+            for part_data in parts_data:
+                try:
+                    # Check if part exists in database
+                    existing_part = None
+                    try:
+                        existing_part = self.db_manager.get_part(part_data['part_number'])
+                    except:
+                        pass  # Part doesn't exist
+                    
+                    # Create discovery log entry
+                    log_entry = PartDiscoveryLog(
+                        part_number=part_data['part_number'],
+                        invoice_number=part_data['invoice_number'],
+                        invoice_date=part_data['invoice_date'],
+                        discovered_price=Decimal(str(part_data['discovered_price'])),
+                        authorized_price=existing_part.authorized_price if existing_part else None,
+                        action_taken='discovered' if not existing_part else 'price_mismatch',
+                        processing_session_id=session_id,
+                        notes=f"Discovered from PDF processing: {part_data.get('description', '')}"
+                    )
+                    
+                    self.db_manager.create_discovery_log(log_entry)
+                    
+                except Exception as e:
+                    self.logger.error(f"Failed to log discovery for part {part_data['part_number']}: {e}")
+                    continue
+            
+            self.logger.info(f"Logged {len(parts_data)} part discoveries from invoice {invoice_data.invoice_number}")
             return True
             
         except Exception as e:
-            self.logger.error(f"Failed to save invoice to database: {e}")
+            self.logger.error(f"Failed to log part discoveries: {e}")
             return False
     
     def prepare_for_validation(self, invoice_data: InvoiceData) -> List[Dict[str, Any]]:
