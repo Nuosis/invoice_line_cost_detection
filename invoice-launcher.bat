@@ -24,13 +24,25 @@ REM Check if we need to install first
 if not exist "%PROJECT_DIR%" (
     echo.
     echo Invoice Rate Detection System not found in current directory.
-    set /p "install_choice=Would you like to install it here? (y/n): "
+    echo.
+    echo %INFO_PREFIX% Recommended installation locations:
+    echo   • %LOCALAPPDATA%\Programs\InvoiceRateDetector (recommended for Windows)
+    echo   • %USERPROFILE%\Applications\InvoiceRateDetector
+    echo   • Current directory: %CD%
+    echo.
+    
+    set /p "install_choice=Would you like to install it in the current directory? (y/n): "
     if /i "!install_choice!"=="y" (
         call :check_requirements
         call :install_project
         call :setup_automatic_backup
     ) else (
-        echo %ERROR_PREFIX% Installation cancelled. Please run this script from the desired installation directory.
+        echo.
+        echo %INFO_PREFIX% To install in a recommended location:
+        echo   mkdir "%LOCALAPPDATA%\Programs" ^&^& cd /d "%LOCALAPPDATA%\Programs"
+        echo   curl -O https://raw.githubusercontent.com/your-repo/invoice_line_cost_detection/main/invoice-launcher.bat
+        echo   invoice-launcher.bat
+        echo %ERROR_PREFIX% Installation cancelled. Please run this script from your desired installation directory.
         pause
         exit /b 1
     )
@@ -208,6 +220,26 @@ goto :eof
 echo %INFO_PREFIX% Setting up automatic backup...
 echo %WARNING_PREFIX% Automatic backup setup requires manual configuration on Windows.
 echo Please set up a scheduled task to run backup operations daily.
+goto :eof
+
+:create_desktop_shortcut
+echo %INFO_PREFIX% Creating desktop shortcut...
+
+set "desktop_dir=%USERPROFILE%\Desktop"
+set "shortcut_file=%desktop_dir%\Invoice Rate Detector.bat"
+set "launcher_path=%CD%\invoice-launcher.bat"
+
+REM Create a batch file shortcut that opens in command prompt
+echo @echo off > "%shortcut_file%"
+echo cd /d "%CD%" >> "%shortcut_file%"
+echo start "Invoice Rate Detector" cmd /k "invoice-launcher.bat" >> "%shortcut_file%"
+
+if exist "%shortcut_file%" (
+    echo %SUCCESS_PREFIX% Desktop shortcut created: Invoice Rate Detector.bat
+    echo %INFO_PREFIX% You can now double-click the shortcut on your desktop to launch the application
+) else (
+    echo %WARNING_PREFIX% Could not create desktop shortcut
+)
 goto :eof
 
 :verify_backup_system

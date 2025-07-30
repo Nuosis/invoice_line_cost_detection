@@ -261,6 +261,62 @@ EOF
     fi
 }
 
+# Create desktop shortcut
+create_desktop_shortcut() {
+    log_info "Creating desktop shortcut..."
+    
+    local desktop_dir=""
+    local shortcut_file=""
+    local launcher_path="$(pwd)/invoice-launcher.sh"
+    
+    # Determine desktop directory
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        # macOS
+        desktop_dir="$HOME/Desktop"
+        shortcut_file="$desktop_dir/Invoice Rate Detector.command"
+        
+        # Create .command file for macOS
+        cat > "$shortcut_file" << EOF
+#!/bin/bash
+cd "$(dirname "$launcher_path")"
+./invoice-launcher.sh
+EOF
+        chmod +x "$shortcut_file"
+        
+    else
+        # Linux
+        desktop_dir="$HOME/Desktop"
+        shortcut_file="$desktop_dir/Invoice Rate Detector.desktop"
+        
+        # Create .desktop file for Linux
+        cat > "$shortcut_file" << EOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Invoice Rate Detector
+Comment=Advanced Invoice Rate Detection System
+Exec=gnome-terminal --working-directory="$(dirname "$launcher_path")" -- bash -c "./invoice-launcher.sh; exec bash"
+Icon=utilities-terminal
+Terminal=true
+Categories=Office;Finance;
+StartupNotify=true
+EOF
+        chmod +x "$shortcut_file"
+        
+        # Try to make it trusted (Ubuntu/GNOME)
+        if command -v gio &> /dev/null; then
+            gio set "$shortcut_file" metadata::trusted true 2>/dev/null || true
+        fi
+    fi
+    
+    if [[ -f "$shortcut_file" ]]; then
+        log_success "Desktop shortcut created: $(basename "$shortcut_file")"
+        log_info "You can now double-click the shortcut on your desktop to launch the application"
+    else
+        log_warning "Could not create desktop shortcut"
+    fi
+}
+
 # Verify backup system
 verify_backup_system() {
     log_info "Verifying backup system..."
@@ -513,14 +569,35 @@ main() {
     # Check if we need to install first
     if ! check_project_exists; then
         echo -e "${YELLOW}Invoice Rate Detection System not found in current directory.${NC}"
-        read -p "Would you like to install it here? (y/n): " install_choice
+        echo ""
+        echo -e "${CYAN}Recommended installation locations:${NC}"
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            echo "  • ~/Applications/InvoiceRateDetector (recommended for macOS)"
+            echo "  • ~/.local/bin/InvoiceRateDetector"
+        else
+            echo "  • ~/.local/bin/InvoiceRateDetector (recommended for Linux)"
+            echo "  • ~/Applications/InvoiceRateDetector"
+        fi
+        echo "  • Current directory: $(pwd)"
+        echo ""
+        
+        read -p "Would you like to install it in the current directory? (y/n): " install_choice
         
         if [[ "$install_choice" =~ ^[Yy]$ ]]; then
             check_requirements
             install_project
             setup_automatic_backup
         else
-            log_error "Installation cancelled. Please run this script from the desired installation directory."
+            echo ""
+            echo -e "${CYAN}To install in a recommended location:${NC}"
+            if [[ "$OSTYPE" == "darwin"* ]]; then
+                echo "  mkdir -p ~/Applications && cd ~/Applications"
+            else
+                echo "  mkdir -p ~/.local/bin && cd ~/.local/bin"
+            fi
+            echo "  curl -O https://raw.githubusercontent.com/your-repo/invoice_line_cost_detection/main/invoice-launcher.sh"
+            echo "  chmod +x invoice-launcher.sh && ./invoice-launcher.sh"
+            log_error "Installation cancelled. Please run this script from your desired installation directory."
             exit 1
         fi
     else

@@ -15,40 +15,54 @@ A modern, user-friendly CLI tool for detecting overcharges in PDF invoices using
 
 ## Quick Start
 
-### 🚀 Automated Setup (Recommended)
+### 🚀 One-Click Setup (Recommended)
 
-The easiest way to get started is using the automated launcher script for your platform:
+The easiest way to get started is with the **Clarity Invoice Validator** bootstrap file:
+
+#### **🎯 Super Simple Setup**
+1. **Download the bootstrap file for your platform**:
+   - **🪟 Windows**: [`Clarity Invoice Validator.bat`](https://raw.githubusercontent.com/your-repo/invoice_line_cost_detection/main/Clarity%20Invoice%20Validator.bat)
+   - **🍎 macOS**: [`Clarity Invoice Validator.command`](https://raw.githubusercontent.com/your-repo/invoice_line_cost_detection/main/Clarity%20Invoice%20Validator.command)
+   - **🐧 Linux**: [`Clarity Invoice Validator.command`](https://raw.githubusercontent.com/your-repo/invoice_line_cost_detection/main/Clarity%20Invoice%20Validator.command)
+
+2. **Double-click the file** - That's it! 🎉
+
+#### **✨ What happens automatically:**
+- 🔍 **Smart Detection**: Checks if the system is already installed
+- 📥 **Auto-Download**: Downloads and sets up everything if needed
+- 🏠 **Standard Location**: Installs to the recommended system location
+- ✅ **Requirements Check**: Verifies Python 3.8+, UV, Git
+- 🔧 **Auto-Install**: Installs missing dependencies (UV on Linux/macOS)
+- 🗂️ **Project Setup**: Clones and configures the complete system
+- 🔄 **Auto-Backup**: Sets up automatic database backups (Linux/macOS)
+- 🎛️ **Launch Interface**: Opens the user-friendly menu system
+
+### 🛠️ Advanced Setup (Alternative)
+
+For users who prefer manual control, you can use the launcher scripts directly:
 
 #### **🐧 Linux / 🍎 macOS**
-1. **Download the launcher script**:
-   ```bash
-   curl -O https://raw.githubusercontent.com/your-repo/invoice_line_cost_detection/main/invoice-launcher.sh
-   chmod +x invoice-launcher.sh
-   ```
+```bash
+# Choose installation location (recommended)
+mkdir -p ~/Applications && cd ~/Applications  # macOS
+# OR
+mkdir -p ~/.local/bin && cd ~/.local/bin      # Linux
 
-2. **Run the launcher**:
-   ```bash
-   ./invoice-launcher.sh
-   ```
+# Download and run launcher
+curl -O https://raw.githubusercontent.com/your-repo/invoice_line_cost_detection/main/invoice-launcher.sh
+chmod +x invoice-launcher.sh
+./invoice-launcher.sh
+```
 
 #### **🪟 Windows**
-1. **Download the launcher script**:
-   ```cmd
-   curl -O https://raw.githubusercontent.com/your-repo/invoice_line_cost_detection/main/invoice-launcher.bat
-   ```
-   *Or download manually from the repository*
+```cmd
+# Choose installation location (recommended)
+mkdir "%LOCALAPPDATA%\Programs" && cd /d "%LOCALAPPDATA%\Programs"
 
-2. **Run the launcher**:
-   ```cmd
-   invoice-launcher.bat
-   ```
-
-#### **✨ What the launcher does:**
-- ✅ Check system requirements (Python 3.8+, UV, Git)
-- ✅ Automatically install missing dependencies (UV on Linux/macOS)
-- ✅ Clone and set up the project
-- ✅ Configure automatic database backups (Linux/macOS)
-- ✅ Provide a user-friendly menu interface
+# Download and run launcher
+curl -O https://raw.githubusercontent.com/your-repo/invoice_line_cost_detection/main/invoice-launcher.bat
+invoice-launcher.bat
+```
 
 ### 📋 Manual Installation
 
@@ -211,23 +225,25 @@ uv run invoice-checker status
 ### Project Structure
 ```
 invoice_line_cost_detection/
-├── invoice-launcher.sh    # 🚀 Automated setup and launcher script (Linux/macOS)
-├── invoice-launcher.bat   # 🚀 Automated setup and launcher script (Windows)
-├── cli/                   # CLI command modules
-│   ├── main.py           # Main CLI entry point
-│   ├── commands/         # Individual command implementations
-│   └── ...               # CLI utilities and helpers
-├── processing/           # PDF processing and validation
-│   ├── pdf_processor.py  # PDF text extraction
-│   ├── validation_engine.py # Validation logic
-│   └── ...               # Processing utilities
-├── database/             # Database operations
-│   ├── models.py         # Database models
-│   └── database.py       # Database connection and operations
-├── unit_tests/           # Test suite
-├── docs/                 # Documentation and sample files
-├── pyproject.toml        # Project configuration
-└── README.md            # This file
+├── Clarity Invoice Validator.bat     # 🎯 One-click bootstrap (Windows)
+├── Clarity Invoice Validator.command # 🎯 One-click bootstrap (macOS/Linux)
+├── invoice-launcher.sh               # 🚀 Advanced launcher script (Linux/macOS)
+├── invoice-launcher.bat              # 🚀 Advanced launcher script (Windows)
+├── cli/                              # CLI command modules
+│   ├── main.py                      # Main CLI entry point
+│   ├── commands/                    # Individual command implementations
+│   └── ...                          # CLI utilities and helpers
+├── processing/                       # PDF processing and validation
+│   ├── pdf_processor.py             # PDF text extraction
+│   ├── validation_engine.py         # Validation logic
+│   └── ...                          # Processing utilities
+├── database/                         # Database operations
+│   ├── models.py                    # Database models
+│   └── database.py                  # Database connection and operations
+├── unit_tests/                       # Test suite
+├── docs/                            # Documentation and sample files
+├── pyproject.toml                   # Project configuration
+└── README.md                        # This file
 ```
 
 ### 🎯 Launcher Script Features
