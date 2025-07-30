@@ -129,8 +129,8 @@ invoice-checker process ./invoices --output report.csv --interactive
 # Collect unknown parts without validation
 invoice-checker process ./invoices --collect-unknown --format txt
 
-# Threshold-based processing for legacy mode
-invoice-checker process single_invoice.pdf --threshold 0.25 --validation-mode threshold_based
+# Threshold-based processing (alternative validation mode)
+uv run invoice-checker process single_invoice.pdf --threshold 0.25 --validation-mode threshold_based
 ```
 
 ### 2. `batch` - Batch Processing

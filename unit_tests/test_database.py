@@ -19,7 +19,7 @@ from database.models import (
     ValidationError, DatabaseError, PartNotFoundError, ConfigurationError
 )
 from database.db_migration import DatabaseMigration
-from tests.test_cleanup_utils import cleanup_test_backup_files
+from unit_tests.test_cleanup_utils import cleanup_test_backup_files
 
 
 class TestDatabaseManager(unittest.TestCase):

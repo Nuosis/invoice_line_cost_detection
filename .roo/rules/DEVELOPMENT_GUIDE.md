@@ -1,11 +1,13 @@
 # Invoice Rate Detection System - Development Guide
 
+**THIS SYSTEM HAS NEVER BEEN DEPLOYED. WE DO NOT NEED TO MAINTAIN BACKWARDS COMPATABILITY UNLESS EXPLICITLY REQUESTED**
+
 ## Solution Overview
 
 - **User**: Single, non-technical user (business owner) on a desktop (Windows/Mac/Linux).
-- **Interface**: Simple command-line (CLI) tool, run by double-clicking or from terminal.
-- **Workflow**: User selects a folder of PDF invoices, runs the tool, and receives a clear, easy-to-read report of all overcharges by invoice/date/amount.
-- **Configuration**: The overcharge threshold (default $0.30) is user-configurable (via prompt or config file).
+- **Interface**: Modern CLI tool with subcommands for different operations.
+- **Workflow**: User manages parts database, processes invoices, and receives detailed validation reports.
+- **Configuration**: Parts database with expected rates, configurable validation strategies.
 - **No post-processing**: The report is for manual use; no integration with accounting/email/etc.
 - **No security or multi-user concerns.**
 
@@ -15,65 +17,79 @@
 
 ```mermaid
 flowchart TD
-    A[User downloads/extracts app] --> B[User double-clicks or runs CLI tool]
-    B --> C[Tool prompts for folder of PDFs]
-    C --> D[User selects folder]
-    D --> E[Tool processes all PDFs in folder]
-    E --> F[Tool outputs a single report file (CSV or TXT)]
+    A[User downloads/extracts app] --> B[User runs CLI tool]
+    B --> C[Check system status]
+    C --> D[Manage parts database]
+    D --> E[Process invoices folder]
+    E --> F[Review validation report]
     F --> G[User opens report in Excel or Notepad]
 ```
 
 ---
 
-## CLI Example
+## CLI Examples
 
 ```sh
-python invoice_checker.py --input /path/to/invoices --threshold 0.30 --output report.csv
+# Check system status
+uv run invoice-checker status
+
+# Process invoices with validation
+uv run invoice-checker process --input /path/to/invoices --output report.csv
+
+# Manage parts database
+uv run invoice-checker parts list
+uv run invoice-checker parts add --code "GS0448" --description "SHIRT WORK LS BTN COTTON" --rate 0.30
+
+# Interactive parts discovery
+uv run invoice-checker discover --input /path/to/invoices
 ```
-- If run without arguments, prompt user for folder and threshold.
 
 ---
 
 ## Report Example
 
-| Invoice #   | Date       | Line Item | Rate | Qty | Overcharge | Description                |
-|-------------|------------|-----------|------|-----|------------|----------------------------|
-| 5790256943  | 06/09/2025 | GS0448    | 0.345| 8   | $0.36      | SHIRT WORK LS BTN COTTON   |
-| ...         | ...        | ...       | ...  | ... | ...        | ...                        |
+| Invoice #   | Date       | Line Item | Rate | Qty | Validation Result | Issue Type | Description                |
+|-------------|------------|-----------|------|-----|-------------------|------------|----------------------------|
+| 5790256943  | 06/09/2025 | GS0448    | 0.345| 8   | FAIL              | RATE_HIGH  | SHIRT WORK LS BTN COTTON   |
+| ...         | ...        | ...       | ...  | ... | ...               | ...        | ...                        |
 
 ---
 
 ## Key Features
 
-- **Batch Processing**: Accepts a folder of PDFs, processes all at once.
-- **Configurable Threshold**: User can set/change the overcharge threshold.
-- **Simple Output**: One CSV or TXT report, easy to open in Excel/Notepad.
-- **No Duplicates**: Each invoice is listed by number/date; user can re-run as needed.
+- **Parts Database Integration**: SQLite database for known parts and expected rates.
+- **Advanced Validation**: Multiple validation strategies beyond simple threshold checking.
+- **Interactive Discovery**: Discover and add new parts from invoices interactively.
+- **Batch Processing**: Process entire folders of PDF invoices at once.
+- **Modular Architecture**: Clean separation of CLI, processing, and database layers.
+- **Simple Output**: CSV or TXT reports, easy to open in Excel/Notepad.
 - **No GUI, No Web, No Docker required**: Just Python and dependencies.
 
 ---
 
-## Implementation Steps
+## Implementation Architecture
 
-1. **PDF Text Extraction**: Use a library like `pdfplumber` or `PyPDF2`.
-2. **Line Item Parsing**: Regex or simple pattern matching to extract line items and rates.
-3. **Threshold Comparison**: Flag any line item with rate > threshold.
-4. **Report Generation**: Write flagged items to a CSV or TXT file.
-5. **User Prompts**: If no arguments, prompt for folder and threshold.
-6. **Error Handling**: Print clear errors for unreadable PDFs, missing data, etc.
+1. **CLI Module**: Command-line interface with subcommands (status, process, parts, discover).
+2. **Processing Module**: PDF text extraction using pdfplumber, line item parsing.
+3. **Database Module**: SQLite database operations for parts management.
+4. **Validation Engine**: Multiple validation strategies and business rules.
+5. **Report Generation**: CSV and TXT report generation with detailed results.
+6. **Error Handling**: Comprehensive error handling and user-friendly messages.
 
 ---
 
 ## Deployment
 
-- User downloads a ZIP or folder with the script and a README.
-- User double-clicks or runs the script, follows prompts, and gets a report.
-- No installation or admin rights required (except Python and dependencies).
+- User downloads a ZIP or folder with the modern CLI application.
+- User installs with `uv pip install -e .` or runs directly with `uv run`.
+- No installation or admin rights required (except Python and UV).
+- Database is created automatically on first run.
 
 ---
 
 ## Notes
 
 - **Cost, ease of use, and clarity are prioritized.**
-- **No unnecessary complexity.**
+- **Modern architecture with clean separation of concerns.**
+- **Extensible validation system for future requirements.**
 - **No post-processing or automation beyond the report.**

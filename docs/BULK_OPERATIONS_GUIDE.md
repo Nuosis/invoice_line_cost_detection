@@ -22,16 +22,16 @@ Update multiple parts simultaneously from CSV data with selective field updates.
 #### Command Usage
 ```bash
 # Update prices only
-invoice-checker parts bulk-update updates.csv --field price
+uv run invoice-checker parts bulk-update updates.csv --field price
 
 # Update multiple fields
-invoice-checker parts bulk-update updates.csv --field price --field description
+uv run invoice-checker parts bulk-update updates.csv --field price --field description
 
 # Dry run to preview changes
-invoice-checker parts bulk-update updates.csv --field price --dry-run
+uv run invoice-checker parts bulk-update updates.csv --field price --dry-run
 
 # Filter by category
-invoice-checker parts bulk-update updates.csv --field price --filter-category "Clothing"
+uv run invoice-checker parts bulk-update updates.csv --field price --filter-category "Clothing"
 ```
 
 #### CSV Format
@@ -54,16 +54,16 @@ Remove or deactivate multiple parts from the database.
 #### Command Usage
 ```bash
 # Soft delete (deactivate) parts
-invoice-checker parts bulk-delete parts_to_delete.csv
+uv run invoice-checker parts bulk-delete parts_to_delete.csv
 
 # Permanently delete parts
-invoice-checker parts bulk-delete parts_to_delete.csv --hard
+uv run invoice-checker parts bulk-delete parts_to_delete.csv --hard
 
 # Dry run to preview deletions
-invoice-checker parts bulk-delete parts_to_delete.csv --dry-run
+uv run invoice-checker parts bulk-delete parts_to_delete.csv --dry-run
 
 # Skip confirmation prompt
-invoice-checker parts bulk-delete parts_to_delete.csv --force
+uv run invoice-checker parts bulk-delete parts_to_delete.csv --force
 ```
 
 #### CSV Format
