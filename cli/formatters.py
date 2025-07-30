@@ -371,3 +371,24 @@ def display_summary(title: str, stats: Dict[str, Any]) -> None:
             formatted_value = str(value)
         
         click.echo(f"  {formatted_key}: {formatted_value}")
+
+
+# Aliases for backward compatibility with discovery_commands
+def format_success(message: str) -> str:
+    """Format a success message and return it as a string."""
+    return click.style(f"✓ {message}", fg='green')
+
+
+def format_error(message: str) -> str:
+    """Format an error message and return it as a string."""
+    return click.style(f"✗ Error: {message}", fg='red')
+
+
+def format_warning(message: str) -> str:
+    """Format a warning message and return it as a string."""
+    return click.style(f"⚠ Warning: {message}", fg='yellow')
+
+
+def format_info(message: str) -> str:
+    """Format an info message and return it as a string."""
+    return click.style(f"ℹ {message}", fg='blue')

@@ -54,6 +54,38 @@ def validate_part_number(part_number: str) -> str:
     return part_number
 
 
+def validate_description(description: str) -> str:
+    """
+    Validate a part description.
+    
+    Args:
+        description: Description to validate
+        
+    Returns:
+        Validated description (stripped)
+        
+    Raises:
+        ValidationError: If description format is invalid
+    """
+    if not description or not isinstance(description, str):
+        raise ValidationError("Description must be a non-empty string")
+    
+    # Strip whitespace
+    description = description.strip()
+    
+    if not description:
+        raise ValidationError("Description cannot be empty or whitespace only")
+    
+    # Check length constraints
+    if len(description) < 3:
+        raise ValidationError("Description must be at least 3 characters long")
+    
+    if len(description) > 200:
+        raise ValidationError("Description cannot exceed 200 characters")
+    
+    return description
+
+
 def validate_price(price: Union[str, float, Decimal]) -> Decimal:
     """
     Validate and convert a price value.

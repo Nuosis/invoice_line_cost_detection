@@ -252,6 +252,86 @@ def show_import_progress(records: list, label: str = "Importing records") -> Ite
             bar.update(1)
 
 
+class ProgressTracker:
+    """
+    A comprehensive progress tracker for complex operations.
+    """
+    
+    def __init__(self, total_items: int = 0, label: str = "Processing"):
+        """
+        Initialize progress tracker.
+        
+        Args:
+            total_items: Total number of items to process
+            label: Label to display with progress
+        """
+        self.total_items = total_items
+        self.label = label
+        self.processed_items = 0
+        self.start_time = time.time()
+        self.current_operation = ""
+    
+    def update(self, increment: int = 1, operation: str = None):
+        """
+        Update progress.
+        
+        Args:
+            increment: Number of items processed
+            operation: Current operation description
+        """
+        self.processed_items += increment
+        if operation:
+            self.current_operation = operation
+    
+    def set_total(self, total: int):
+        """Set the total number of items."""
+        self.total_items = total
+    
+    def get_progress_percentage(self) -> float:
+        """Get current progress as percentage."""
+        if self.total_items == 0:
+            return 0.0
+        return (self.processed_items / self.total_items) * 100
+    
+    def get_elapsed_time(self) -> float:
+        """Get elapsed time in seconds."""
+        return time.time() - self.start_time
+    
+    def get_eta(self) -> str:
+        """Get estimated time of arrival."""
+        if self.processed_items == 0:
+            return "Calculating..."
+        
+        elapsed = self.get_elapsed_time()
+        rate = self.processed_items / elapsed
+        
+        if rate == 0:
+            return "Unknown"
+        
+        remaining_items = self.total_items - self.processed_items
+        remaining_seconds = remaining_items / rate
+        
+        return estimate_time_remaining(self.processed_items, self.total_items, self.start_time)
+    
+    def format_status(self) -> str:
+        """Format current status for display."""
+        percentage = self.get_progress_percentage()
+        elapsed = self.get_elapsed_time()
+        
+        status = f"{self.label}: {self.processed_items}/{self.total_items} ({percentage:.1f}%)"
+        
+        if self.current_operation:
+            status += f" - {self.current_operation}"
+        
+        if elapsed > 1:  # Only show time info after 1 second
+            status += f" - Elapsed: {elapsed:.1f}s"
+            if self.total_items > 0 and self.processed_items > 0:
+                eta = self.get_eta()
+                status += f" - ETA: {eta}"
+        
+        return status
+
+
 class MultiStepProgress:
     """
     Progress indicator for multi-step operations.

@@ -27,6 +27,9 @@ class TestInteractiveFunctionsIntegration:
         self.temp_db = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
         self.temp_db.close()
         
+        # Remove the empty file so DatabaseManager will initialize it properly
+        Path(self.temp_db.name).unlink()
+        
         self.db_manager = DatabaseManager(self.temp_db.name)
         self.session_id = str(uuid.uuid4())
         

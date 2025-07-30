@@ -125,10 +125,8 @@ class DatabaseManager:
                 migration_sql = self._get_migration_sql()
                 
                 # Execute each statement in the migration
-                for statement in migration_sql.split(';'):
-                    statement = statement.strip()
-                    if statement:
-                        conn.execute(statement)
+                # Use executescript to handle multi-line statements properly
+                conn.executescript(migration_sql)
                 
                 logger.info("Database initialized successfully")
                 
@@ -184,8 +182,7 @@ class DatabaseManager:
             user_decision TEXT,
             discovery_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             processing_session_id TEXT,
-            notes TEXT,
-            FOREIGN KEY (part_number) REFERENCES parts(part_number) ON DELETE SET NULL
+            notes TEXT
         );
 
         -- Create indexes for performance
@@ -298,30 +295,41 @@ class DatabaseManager:
             # Validate part data
             part.validate()
             
-            with self.transaction() as conn:
-                # Set creation timestamp
-                part.created_date = datetime.now()
-                part.last_updated = part.created_date
+            with self.get_connection() as conn:
+                try:
+                    conn.execute("BEGIN IMMEDIATE")
+                    
+                    # Set creation timestamp
+                    part.created_date = datetime.now()
+                    part.last_updated = part.created_date
+                    
+                    conn.execute("""
+                        INSERT INTO parts (
+                            part_number, authorized_price, description, category, source,
+                            first_seen_invoice, created_date, last_updated, is_active, notes
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        part.part_number, float(part.authorized_price), part.description,
+                        part.category, part.source, part.first_seen_invoice,
+                        part.created_date.isoformat(), part.last_updated.isoformat(),
+                        part.is_active, part.notes
+                    ))
+                    
+                    conn.commit()
+                    logger.info(f"Created part: {part.part_number}")
+                    return part
+                    
+                except sqlite3.IntegrityError as e:
+                    conn.rollback()
+                    if "UNIQUE constraint failed" in str(e):
+                        raise ValidationError(f"Part {part.part_number} already exists")
+                    raise DatabaseError(f"Failed to create part: {e}")
+                except Exception as e:
+                    conn.rollback()
+                    raise
                 
-                conn.execute("""
-                    INSERT INTO parts (
-                        part_number, authorized_price, description, category, source,
-                        first_seen_invoice, created_date, last_updated, is_active, notes
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    part.part_number, float(part.authorized_price), part.description,
-                    part.category, part.source, part.first_seen_invoice,
-                    part.created_date.isoformat(), part.last_updated.isoformat(),
-                    part.is_active, part.notes
-                ))
-                
-                logger.info(f"Created part: {part.part_number}")
-                return part
-                
-        except sqlite3.IntegrityError as e:
-            if "UNIQUE constraint failed" in str(e):
-                raise ValidationError(f"Part {part.part_number} already exists")
-            raise DatabaseError(f"Failed to create part: {e}")
+        except ValidationError:
+            raise
         except Exception as e:
             logger.error(f"Failed to create part {part.part_number}: {e}")
             raise DatabaseError(f"Failed to create part: {e}")
@@ -606,26 +614,37 @@ class DatabaseManager:
             # Validate configuration data
             config.validate()
             
-            with self.transaction() as conn:
-                # Set creation timestamp
-                config.created_date = datetime.now()
-                config.last_updated = config.created_date
+            with self.get_connection() as conn:
+                try:
+                    conn.execute("BEGIN IMMEDIATE")
+                    
+                    # Set creation timestamp
+                    config.created_date = datetime.now()
+                    config.last_updated = config.created_date
+                    
+                    conn.execute("""
+                        INSERT INTO config (key, value, data_type, description, category, created_date, last_updated)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        config.key, config.value, config.data_type, config.description,
+                        config.category, config.created_date.isoformat(), config.last_updated.isoformat()
+                    ))
+                    
+                    conn.commit()
+                    logger.info(f"Created configuration: {config.key}")
+                    return config
+                    
+                except sqlite3.IntegrityError as e:
+                    conn.rollback()
+                    if "UNIQUE constraint failed" in str(e):
+                        raise ValidationError(f"Configuration key {config.key} already exists")
+                    raise DatabaseError(f"Failed to create configuration: {e}")
+                except Exception as e:
+                    conn.rollback()
+                    raise
                 
-                conn.execute("""
-                    INSERT INTO config (key, value, data_type, description, category, created_date, last_updated)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    config.key, config.value, config.data_type, config.description,
-                    config.category, config.created_date.isoformat(), config.last_updated.isoformat()
-                ))
-                
-                logger.info(f"Created configuration: {config.key}")
-                return config
-                
-        except sqlite3.IntegrityError as e:
-            if "UNIQUE constraint failed" in str(e):
-                raise ValidationError(f"Configuration key {config.key} already exists")
-            raise DatabaseError(f"Failed to create configuration: {e}")
+        except ValidationError:
+            raise
         except Exception as e:
             logger.error(f"Failed to create configuration {config.key}: {e}")
             raise DatabaseError(f"Failed to create configuration: {e}")
@@ -1132,3 +1151,18 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Failed to cleanup old backups: {e}")
             raise DatabaseError(f"Failed to cleanup old backups: {e}")
+
+    def close(self) -> None:
+        """
+        Close the database manager and perform any necessary cleanup.
+        
+        This method is provided for compatibility with test frameworks and
+        other code that expects a close() method. Since this class uses
+        context managers for connection handling, there's no persistent
+        connection to close, but this method can be used for any future
+        cleanup operations.
+        """
+        # Currently no persistent connections to close since we use context managers
+        # This method is here for compatibility and future extensibility
+        logger.debug("DatabaseManager close() called - no persistent connections to close")
+        pass

@@ -16,12 +16,11 @@ from unittest.mock import Mock, patch, MagicMock
 # Import the functions directly to avoid circular import issues
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-# Mock the problematic imports before importing the module
-with patch('cli.main.pass_context'):
-    from cli.commands.invoice_commands import (
-        _discover_pdf_files, _create_validation_config, _execute_validation_workflow,
-        _generate_processing_results, _process_invoices
-    )
+# Import the functions directly to avoid circular import issues
+from cli.commands.invoice_commands import (
+    _discover_pdf_files, _create_validation_config, _execute_validation_workflow,
+    _generate_processing_results, _process_invoices
+)
 
 from cli.exceptions import ProcessingError
 from processing.validation_models import ValidationConfiguration

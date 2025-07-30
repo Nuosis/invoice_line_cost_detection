@@ -206,10 +206,10 @@ class TestCLIIntegration:
     
     def test_discovery_list_command(self):
         """Test discovery log list command."""
-        result = self.runner.invoke(cli, ['discovery', 'list'], env=self.env)
+        result = self.runner.invoke(cli, ['discovery', 'sessions'], env=self.env)
         assert result.exit_code == 0
-        # Should show no entries message for empty database
-        assert 'No discovery log entries found' in result.output
+        # Should show no sessions message for empty database
+        assert 'No discovery sessions found' in result.output
     
     def test_parts_stats_command(self):
         """Test parts statistics command."""

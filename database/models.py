@@ -195,11 +195,12 @@ class Configuration:
         if self.data_type not in ('string', 'number', 'boolean', 'json'):
             raise ValidationError("Data type must be one of: string, number, boolean, json")
 
-        # Validate value according to data_type
-        try:
-            self.get_typed_value()
-        except (ValueError, json.JSONDecodeError) as e:
-            raise ValidationError(f"Value '{self.value}' is not valid for data type '{self.data_type}': {e}")
+        # Validate value according to data_type (skip validation for empty values during construction)
+        if self.value:  # Only validate non-empty values
+            try:
+                self.get_typed_value()
+            except (ValueError, json.JSONDecodeError) as e:
+                raise ValidationError(f"Value '{self.value}' is not valid for data type '{self.data_type}': {e}")
 
     def get_typed_value(self) -> Union[str, float, bool, Dict, list]:
         """
@@ -421,6 +422,55 @@ DEFAULT_CONFIG = {
         value='false',
         data_type='boolean',
         description='Automatically add discovered parts without user confirmation',
+        category='discovery'
+    ),
+    'discovery_batch_mode': Configuration(
+        key='discovery_batch_mode',
+        value='false',
+        data_type='boolean',
+        description='Collect unknown parts for batch review instead of interactive prompts',
+        category='discovery'
+    ),
+    'discovery_prompt_timeout': Configuration(
+        key='discovery_prompt_timeout',
+        value='300',
+        data_type='number',
+        description='Timeout in seconds for interactive discovery prompts (0 = no timeout)',
+        category='discovery'
+    ),
+    'discovery_max_price_variance': Configuration(
+        key='discovery_max_price_variance',
+        value='0.10',
+        data_type='number',
+        description='Maximum price variance threshold for flagging discovered parts',
+        category='discovery'
+    ),
+    'discovery_auto_skip_duplicates': Configuration(
+        key='discovery_auto_skip_duplicates',
+        value='true',
+        data_type='boolean',
+        description='Automatically skip parts already discovered in current session',
+        category='discovery'
+    ),
+    'discovery_require_description': Configuration(
+        key='discovery_require_description',
+        value='false',
+        data_type='boolean',
+        description='Require description when adding discovered parts',
+        category='discovery'
+    ),
+    'discovery_default_category': Configuration(
+        key='discovery_default_category',
+        value='discovered',
+        data_type='string',
+        description='Default category for newly discovered parts',
+        category='discovery'
+    ),
+    'discovery_session_cleanup_days': Configuration(
+        key='discovery_session_cleanup_days',
+        value='7',
+        data_type='number',
+        description='Days after which inactive discovery sessions are cleaned up',
         category='discovery'
     ),
     'price_tolerance': Configuration(

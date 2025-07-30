@@ -25,6 +25,7 @@ from processing.validation_strategies_extended import (
     PriceComparisonValidationStrategy, BusinessRulesValidationStrategy
 )
 from processing.exceptions import PDFProcessingError
+from processing.part_discovery_service import InteractivePartDiscoveryService
 from database.models import Part, PartDiscoveryLog
 from database.database import DatabaseManager
 
@@ -179,6 +180,7 @@ class ValidationEngine:
         self.pdf_processor = PDFProcessor(logger=self.logger)
         self.audit_manager = AuditTrailManager(db_manager)
         self.error_handler = ValidationErrorHandler(self.config, db_manager)
+        self.discovery_service = InteractivePartDiscoveryService(db_manager)
         
         # Initialize validation strategies
         self.validators = {
@@ -240,7 +242,8 @@ class ValidationEngine:
                 'invoice_data': invoice_data,
                 'session_id': session_id,
                 'unknown_parts_collection': [],
-                'found_parts': {}
+                'found_parts': {},
+                'discovery_service': self.discovery_service
             }
             
             # Execute each validation phase
@@ -510,3 +513,139 @@ class ValidationEngine:
         self.logger.info(f"Batch validation completed: {successful_count}/{len(results)} successful")
         
         return results
+    
+    def validate_invoice_with_discovery(self, invoice_path: Path, session_id: Optional[str] = None,
+                                      interactive_discovery: bool = False) -> tuple:
+        """
+        Validate an invoice with integrated part discovery.
+        
+        Args:
+            invoice_path: Path to the PDF invoice file
+            session_id: Optional processing session ID
+            interactive_discovery: Enable interactive part discovery
+            
+        Returns:
+            Tuple of (InvoiceValidationResult, List[PartDiscoveryResult])
+        """
+        if not session_id:
+            session_id = str(uuid.uuid4())
+        
+        # Start discovery session
+        discovery_mode = 'interactive' if interactive_discovery else 'batch_collect'
+        self.discovery_service.start_discovery_session(session_id, discovery_mode)
+        
+        # Perform standard validation
+        validation_result = self.validate_invoice(invoice_path, session_id)
+        
+        # Handle discovery if unknown parts were found
+        discovery_results = []
+        if validation_result.processing_successful:
+            # Extract invoice data for discovery
+            invoice_data = self._extract_invoice_data(invoice_path, validation_result)
+            if invoice_data:
+                # Discover unknown parts
+                unknown_contexts = self.discovery_service.discover_unknown_parts_from_invoice(
+                    invoice_data, session_id
+                )
+                
+                if unknown_contexts:
+                    if interactive_discovery:
+                        discovery_results = self.discovery_service.process_unknown_parts_interactive(session_id)
+                    else:
+                        discovery_results = self.discovery_service.process_unknown_parts_batch(session_id)
+        
+        # End discovery session
+        self.discovery_service.end_discovery_session(session_id)
+        
+        return validation_result, discovery_results
+    
+    def validate_batch_with_discovery(self, invoice_paths: List[Path],
+                                    session_id: Optional[str] = None,
+                                    interactive_discovery: bool = False) -> tuple:
+        """
+        Validate multiple invoices with integrated part discovery.
+        
+        Args:
+            invoice_paths: List of PDF file paths to validate
+            session_id: Optional batch processing session ID
+            interactive_discovery: Enable interactive part discovery
+            
+        Returns:
+            Tuple of (List[InvoiceValidationResult], List[PartDiscoveryResult])
+        """
+        if not session_id:
+            session_id = str(uuid.uuid4())
+        
+        # Start discovery session
+        discovery_mode = 'interactive' if interactive_discovery else 'batch_collect'
+        self.discovery_service.start_discovery_session(session_id, discovery_mode)
+        
+        self.logger.info(f"Starting batch validation with discovery of {len(invoice_paths)} invoices")
+        
+        validation_results = []
+        all_unknown_contexts = []
+        
+        # Process each invoice and collect unknown parts
+        for i, invoice_path in enumerate(invoice_paths, 1):
+            self.logger.info(f"Processing invoice {i}/{len(invoice_paths)}: {invoice_path}")
+            
+            try:
+                # Validate individual invoice
+                result = self.validate_invoice(invoice_path, session_id)
+                validation_results.append(result)
+                
+                # Discover unknown parts if validation was successful
+                if result.processing_successful:
+                    invoice_data = self._extract_invoice_data(invoice_path, result)
+                    if invoice_data:
+                        unknown_contexts = self.discovery_service.discover_unknown_parts_from_invoice(
+                            invoice_data, session_id
+                        )
+                        all_unknown_contexts.extend(unknown_contexts)
+                        
+            except Exception as e:
+                self.logger.exception(f"Failed to validate {invoice_path}: {e}")
+                # Create a minimal failed result
+                failed_result = InvoiceValidationResult(
+                    invoice_number="UNKNOWN",
+                    invoice_date="UNKNOWN",
+                    invoice_path=str(invoice_path),
+                    processing_session_id=session_id,
+                    is_valid=False,
+                    processing_successful=False
+                )
+                validation_results.append(failed_result)
+        
+        # Process all discovered unknown parts
+        discovery_results = []
+        if all_unknown_contexts:
+            self.logger.info(f"Processing {len(all_unknown_contexts)} unknown part contexts")
+            
+            if interactive_discovery:
+                discovery_results = self.discovery_service.process_unknown_parts_interactive(session_id)
+            else:
+                discovery_results = self.discovery_service.process_unknown_parts_batch(session_id)
+        
+        # Log batch completion
+        successful_count = sum(1 for r in validation_results if r.processing_successful)
+        unknown_parts_count = len(set(ctx.part_number for ctx in all_unknown_contexts))
+        
+        self.logger.info(
+            f"Batch validation with discovery completed: {successful_count}/{len(validation_results)} successful, "
+            f"{unknown_parts_count} unique unknown parts discovered"
+        )
+        
+        # End discovery session
+        session_summary = self.discovery_service.end_discovery_session(session_id)
+        self.logger.info(f"Discovery session summary: {session_summary}")
+        
+        return validation_results, discovery_results
+    
+    def get_discovery_service(self) -> InteractivePartDiscoveryService:
+        """
+        Get the discovery service instance.
+        
+        Returns:
+            InteractivePartDiscoveryService instance
+        """
+        return self.discovery_service

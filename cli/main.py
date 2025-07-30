@@ -12,8 +12,8 @@ from typing import Optional
 
 import click
 
-from database.database import DatabaseManager
 from database.models import DatabaseError
+from cli.context import CLIContext, pass_context
 from cli.commands import (
     invoice_commands,
     parts_commands,
@@ -24,28 +24,6 @@ from cli.commands import (
 )
 from cli.exceptions import CLIError
 from cli.formatters import setup_logging
-
-
-# Global context class to share state between commands
-class CLIContext:
-    """Context object to share state between CLI commands."""
-    
-    def __init__(self):
-        self.verbose = False
-        self.quiet = False
-        self.database_path = "invoice_detection.db"
-        self.config_file = None
-        self.db_manager = None
-    
-    def get_db_manager(self) -> DatabaseManager:
-        """Get or create database manager instance."""
-        if self.db_manager is None:
-            self.db_manager = DatabaseManager(self.database_path)
-        return self.db_manager
-
-
-# Pass context between commands
-pass_context = click.make_pass_decorator(CLIContext, ensure=True)
 
 
 @click.group(invoke_without_command=True)
@@ -121,6 +99,102 @@ cli.add_command(database_commands.database_group)
 cli.add_command(config_commands.config_group)
 cli.add_command(discovery_commands.discovery_group)
 cli.add_command(utils_commands.utils_group)
+
+# Add top-level commands for convenience (these are also available under utils)
+@cli.command()
+@click.option('--detailed', is_flag=True, help='Show detailed version and dependency information')
+@pass_context
+def version(ctx, detailed):
+    """Display version and system information."""
+    try:
+        # Basic version info
+        app_version = "1.0.0"
+        click.echo(f"Invoice Rate Detection System v{app_version}")
+        
+        if detailed:
+            # Get system information
+            import platform
+            system_info = {
+                'Application Version': app_version,
+                'Python Version': sys.version.split()[0],
+                'Platform': platform.platform(),
+                'Architecture': platform.architecture()[0],
+                'Python Executable': sys.executable
+            }
+            
+            # Get database information
+            try:
+                db_manager = ctx.get_db_manager()
+                db_stats = db_manager.get_database_stats()
+                system_info.update({
+                    'Database Version': db_stats.get('database_version', 'Unknown'),
+                    'Database Size': f"{db_stats.get('database_size_bytes', 0) / (1024*1024):.2f} MB",
+                    'Total Parts': db_stats.get('total_parts', 0),
+                    'Active Parts': db_stats.get('active_parts', 0)
+                })
+            except Exception as e:
+                system_info['Database Status'] = f"Error: {e}"
+            
+            # Display detailed information
+            click.echo("\nDetailed System Information:")
+            click.echo("=" * 40)
+            for key, value in system_info.items():
+                click.echo(f"{key:20}: {value}")
+        
+    except Exception as e:
+        logger = logging.getLogger(__name__)
+        logger.exception("Failed to show version")
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+
+@cli.command()
+@click.option('--format', '-f', type=click.Choice(['table', 'json']), default='table',
+              help='Output format')
+@pass_context
+def status(ctx, format):
+    """Display system status and health information."""
+    try:
+        from cli.formatters import display_summary, format_json, print_success, print_warning, print_error
+        import platform
+        
+        db_manager = ctx.get_db_manager()
+        
+        # Collect system status information
+        status_info = {}
+        
+        # Database status
+        try:
+            db_stats = db_manager.get_database_stats()
+            status_info.update({
+                'Database Status': 'Connected',
+                'Database Version': db_stats.get('database_version', 'Unknown'),
+                'Database Size (MB)': round(db_stats.get('database_size_bytes', 0) / (1024*1024), 2),
+                'Total Parts': db_stats.get('total_parts', 0),
+                'Active Parts': db_stats.get('active_parts', 0),
+                'Configuration Entries': db_stats.get('config_entries', 0),
+                'Discovery Log Entries': db_stats.get('discovery_log_entries', 0)
+            })
+        except Exception as e:
+            status_info['Database Status'] = f'Error: {e}'
+        
+        # System information
+        status_info.update({
+            'Python Version': sys.version.split()[0],
+            'Platform': platform.system(),
+        })
+        
+        # Display status
+        if format == 'table':
+            display_summary("System Status", status_info)
+        elif format == 'json':
+            click.echo(format_json(status_info))
+        
+    except Exception as e:
+        logger = logging.getLogger(__name__)
+        logger.exception("Failed to get system status")
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
 
 
 def main():

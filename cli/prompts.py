@@ -473,6 +473,146 @@ def show_processing_summary(stats: Dict[str, Any]):
         print_info("No pricing anomalies found. All prices appear to be correct.")
 
 
+class PartDiscoveryPrompt:
+    """
+    Interactive prompt handler for part discovery workflow.
+    """
+    
+    def __init__(self):
+        """Initialize the part discovery prompt handler."""
+        self.discovered_parts = []
+        self.user_decisions = {}
+    
+    def prompt_for_unknown_part(self, part_number: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        Prompt user for action when an unknown part is discovered.
+        
+        Args:
+            part_number: The unknown part number
+            context: Additional context about the part discovery
+            
+        Returns:
+            Dictionary containing user decision and any additional data
+        """
+        try:
+            click.echo(f"\n🔍 Unknown part discovered: {part_number}")
+            
+            if context:
+                if 'invoice_number' in context:
+                    click.echo(f"   Found in invoice: {context['invoice_number']}")
+                if 'line_item' in context:
+                    click.echo(f"   Line item: {context['line_item']}")
+                if 'price' in context:
+                    click.echo(f"   Price: {format_currency(context['price'])}")
+            
+            actions = [
+                "Add to database now",
+                "Skip this part",
+                "Skip all unknown parts",
+                "Stop processing"
+            ]
+            
+            choice = prompt_for_choice("What would you like to do?", actions, default="Add to database now")
+            
+            result = {
+                'action': choice.lower().replace(' ', '_'),
+                'part_number': part_number,
+                'context': context or {}
+            }
+            
+            if choice == "Add to database now":
+                # Get part details from user
+                part_details = prompt_for_part_details(part_number)
+                result['part_details'] = part_details
+            
+            self.user_decisions[part_number] = result
+            return result
+            
+        except UserCancelledError:
+            return {
+                'action': 'stop_processing',
+                'part_number': part_number,
+                'context': context or {}
+            }
+    
+    def prompt_for_batch_review(self, unknown_parts: List[str]) -> Dict[str, Any]:
+        """
+        Prompt user to review all unknown parts at once.
+        
+        Args:
+            unknown_parts: List of unknown part numbers
+            
+        Returns:
+            Dictionary containing batch review decisions
+        """
+        try:
+            click.echo(f"\n📋 Found {len(unknown_parts)} unknown parts:")
+            for i, part in enumerate(unknown_parts, 1):
+                click.echo(f"   {i}. {part}")
+            
+            actions = [
+                "Review and add parts individually",
+                "Skip all unknown parts",
+                "Export list for later review"
+            ]
+            
+            choice = prompt_for_choice("How would you like to proceed?", actions)
+            
+            result = {
+                'action': choice.lower().replace(' ', '_'),
+                'unknown_parts': unknown_parts,
+                'individual_decisions': {}
+            }
+            
+            if choice == "Review and add parts individually":
+                for part in unknown_parts:
+                    part_result = self.prompt_for_unknown_part(part)
+                    result['individual_decisions'][part] = part_result
+                    
+                    if part_result['action'] == 'stop_processing':
+                        break
+                    elif part_result['action'] == 'skip_all_unknown_parts':
+                        # Apply skip_all to remaining parts
+                        for remaining_part in unknown_parts[unknown_parts.index(part)+1:]:
+                            result['individual_decisions'][remaining_part] = {
+                                'action': 'skip_this_part',
+                                'part_number': remaining_part,
+                                'context': {}
+                            }
+                        break
+            
+            return result
+            
+        except UserCancelledError:
+            return {
+                'action': 'stop_processing',
+                'unknown_parts': unknown_parts,
+                'individual_decisions': {}
+            }
+    
+    def get_discovery_summary(self) -> Dict[str, Any]:
+        """
+        Get summary of all part discovery decisions.
+        
+        Returns:
+            Summary dictionary with statistics and decisions
+        """
+        summary = {
+            'total_discovered': len(self.user_decisions),
+            'added_to_database': 0,
+            'skipped': 0,
+            'decisions': self.user_decisions.copy()
+        }
+        
+        for decision in self.user_decisions.values():
+            if decision['action'] == 'add_to_database_now':
+                summary['added_to_database'] += 1
+            elif decision['action'] in ['skip_this_part', 'skip_all_unknown_parts']:
+                summary['skipped'] += 1
+        
+        return summary
+
+
 def prompt_for_next_action(unknown_parts: int = 0) -> str:
     """
     Prompt user for next action after processing.

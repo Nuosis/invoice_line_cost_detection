@@ -7,7 +7,8 @@ processing.models and database.models to avoid duplication.
 """
 
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from datetime import datetime
 from decimal import Decimal
 from typing import List, Optional, Dict, Any, Union
@@ -60,8 +61,8 @@ class ValidationResult:
     message: str = ""
     field: Optional[str] = None
     line_number: Optional[int] = None
-    details: Dict[str, Any] = field(default_factory=dict)
-    timestamp: datetime = field(default_factory=datetime.now)
+    details: Dict[str, Any] = dataclass_field(default_factory=dict)
+    timestamp: datetime = dataclass_field(default_factory=datetime.now)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert validation result to dictionary for serialization."""
@@ -85,15 +86,15 @@ class ValidationAnomaly:
     This structure contains detailed information about anomalies
     for reporting and audit purposes.
     """
-    anomaly_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    anomaly_id: str = dataclass_field(default_factory=lambda: str(uuid.uuid4()))
     anomaly_type: AnomalyType = AnomalyType.DATA_QUALITY_ISSUE
     severity: SeverityLevel = SeverityLevel.WARNING
     invoice_number: Optional[str] = None
     invoice_date: Optional[str] = None
     part_number: Optional[str] = None
     description: str = ""
-    details: Dict[str, Any] = field(default_factory=dict)
-    detected_at: datetime = field(default_factory=datetime.now)
+    details: Dict[str, Any] = dataclass_field(default_factory=dict)
+    detected_at: datetime = dataclass_field(default_factory=datetime.now)
     resolution_action: Optional[str] = None
     user_decision: Optional[str] = None
 
@@ -147,26 +148,26 @@ class InvoiceValidationResult:
     # Validation status
     is_valid: bool = True
     processing_successful: bool = False
-    processing_start_time: datetime = field(default_factory=datetime.now)
-    processing_end_time: datetime = field(default_factory=datetime.now)
+    processing_start_time: datetime = dataclass_field(default_factory=datetime.now)
+    processing_end_time: datetime = dataclass_field(default_factory=datetime.now)
     processing_duration: float = 0.0
     
     # Validation results by category
-    pre_validation_results: List[ValidationResult] = field(default_factory=list)
-    data_quality_results: List[ValidationResult] = field(default_factory=list)
-    format_validation_results: List[ValidationResult] = field(default_factory=list)
-    parts_lookup_results: List[ValidationResult] = field(default_factory=list)
-    price_validation_results: List[ValidationResult] = field(default_factory=list)
-    business_rules_results: List[ValidationResult] = field(default_factory=list)
+    pre_validation_results: List[ValidationResult] = dataclass_field(default_factory=list)
+    data_quality_results: List[ValidationResult] = dataclass_field(default_factory=list)
+    format_validation_results: List[ValidationResult] = dataclass_field(default_factory=list)
+    parts_lookup_results: List[ValidationResult] = dataclass_field(default_factory=list)
+    price_validation_results: List[ValidationResult] = dataclass_field(default_factory=list)
+    business_rules_results: List[ValidationResult] = dataclass_field(default_factory=list)
     
     # Anomalies categorized by severity
-    critical_anomalies: List[ValidationAnomaly] = field(default_factory=list)
-    warning_anomalies: List[ValidationAnomaly] = field(default_factory=list)
-    informational_anomalies: List[ValidationAnomaly] = field(default_factory=list)
+    critical_anomalies: List[ValidationAnomaly] = dataclass_field(default_factory=list)
+    warning_anomalies: List[ValidationAnomaly] = dataclass_field(default_factory=list)
+    informational_anomalies: List[ValidationAnomaly] = dataclass_field(default_factory=list)
     
     # Discovery tracking
-    unknown_parts_discovered: List[str] = field(default_factory=list)
-    parts_added_during_processing: List[str] = field(default_factory=list)
+    unknown_parts_discovered: List[str] = dataclass_field(default_factory=list)
+    parts_added_during_processing: List[str] = dataclass_field(default_factory=list)
 
     def get_all_anomalies(self) -> List[ValidationAnomaly]:
         """Get all anomalies regardless of severity."""
@@ -248,7 +249,7 @@ class ValidationConfiguration:
     
     # Format validation settings
     strict_format_validation: bool = True
-    required_format_sections: List[str] = field(
+    required_format_sections: List[str] = dataclass_field(
         default_factory=lambda: ['SUBTOTAL', 'FREIGHT', 'TAX', 'TOTAL']
     )
     
@@ -356,7 +357,7 @@ class PriceSuggestion:
     price: Decimal
     confidence: float  # 0.0 to 1.0
     reason: str
-    source_data: Dict[str, Any] = field(default_factory=dict)
+    source_data: Dict[str, Any] = dataclass_field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert price suggestion to dictionary for serialization."""
@@ -380,7 +381,7 @@ class RecoveryAction:
     message: str
     user_intervention_required: bool = False
     retry_count: int = 0
-    context: Dict[str, Any] = field(default_factory=dict)
+    context: Dict[str, Any] = dataclass_field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert recovery action to dictionary for serialization."""

@@ -447,7 +447,7 @@ class ValidationHelper:
         
         if "part_number" in field_lower or "part number" in error_lower:
             suggestions.extend([
-                "Use only letters, numbers, underscores, hyphens, and periods",
+                "Use only alphanumeric characters, underscores, hyphens, and periods",
                 "Ensure part number is 2-20 characters long",
                 "Example: GP0171NAVY, ITEM-123, PART_001"
             ])

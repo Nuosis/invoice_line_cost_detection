@@ -14,7 +14,7 @@ from pathlib import Path
 
 import click
 
-from cli.main import pass_context
+from cli.context import pass_context
 from cli.formatters import (
     print_success, print_warning, print_error, print_info,
     format_table, format_json, display_summary

@@ -203,11 +203,8 @@ class DatabaseMigration:
                 # Execute migration SQL
                 migration_sql = self.migrations[target_version]
                 
-                # Split and execute each statement
-                for statement in migration_sql.split(';'):
-                    statement = statement.strip()
-                    if statement:
-                        conn.execute(statement)
+                # Use executescript to handle multi-line statements properly
+                conn.executescript(migration_sql)
                 
                 # Update database version
                 conn.execute("""

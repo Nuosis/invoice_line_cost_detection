@@ -20,7 +20,7 @@ from decimal import Decimal
 
 import click
 
-from cli.main import pass_context
+from cli.context import pass_context
 from cli.validators import PART_NUMBER, PRICE, OUTPUT_FORMAT
 from cli.formatters import (
     print_success, print_warning, print_error, print_info,
@@ -30,7 +30,7 @@ from cli.progress import show_import_progress
 from cli.prompts import prompt_for_part_details, prompt_for_confirmation
 from cli.exceptions import CLIError, ValidationError
 from cli.error_handlers import error_handler
-from cli.validation_helpers import ValidationHelper, validate_parts_data_batch
+from cli.validation_helpers import ValidationHelper
 from database.models import Part, PartNotFoundError, DatabaseError
 
 
@@ -207,7 +207,7 @@ def list(ctx, category, active_only, include_inactive, format, limit, offset, so
               help='Output format')
 @click.option('--include-history', is_flag=True, help='Include discovery log history')
 @pass_context
-@error_handler({'operation': 'part_retrieval', 'command': 'parts get', 'part_number': None})
+@error_handler({'operation': 'part_retrieval', 'command': 'parts get'})
 def get(ctx, part_number, format, include_history):
     """
     Retrieve detailed information about a specific part.
@@ -227,7 +227,7 @@ def get(ctx, part_number, format, include_history):
     # Prepare part data
     part_data = {
         'Part Number': part.part_number,
-        'Authorized Price': part.authorized_price,
+        'Authorized Price': f"{part.authorized_price:.2f}",
         'Description': part.description or 'N/A',
         'Category': part.category or 'N/A',
         'Source': part.source,
@@ -435,13 +435,16 @@ def delete(ctx, part_number, soft, hard, force):
         raise CLIError(f"Failed to delete part: {e}")
 
 
-@parts_group.command()
+@parts_group.command(name='import')
 @click.argument('input_file', type=click.Path(exists=True))
 @click.option('--update-existing', is_flag=True, help='Update existing parts')
 @click.option('--dry-run', is_flag=True, help='Validate data without making changes')
 @click.option('--batch-size', type=int, default=100, help='Process in batches')
+@click.option('--skip-duplicates', is_flag=True, help='Skip duplicate parts without error')
+@click.option('--transform-data', is_flag=True, help='Apply data transformations during import')
+@click.option('--mapping-file', type=click.Path(exists=True), help='CSV column mapping file')
 @pass_context
-def import_parts(ctx, input_file, update_existing, dry_run, batch_size):
+def import_parts(ctx, input_file, update_existing, dry_run, batch_size, skip_duplicates, transform_data, mapping_file):
     """
     Import parts from a CSV file.
     
@@ -460,8 +463,14 @@ def import_parts(ctx, input_file, update_existing, dry_run, batch_size):
     try:
         input_path = Path(input_file)
         
+        # Load column mapping if provided
+        column_mapping = None
+        if mapping_file:
+            column_mapping = _load_column_mapping(Path(mapping_file))
+            print_info(f"Loaded column mapping from {mapping_file}")
+        
         # Read and validate CSV file
-        parts_data = _read_parts_csv(input_path)
+        parts_data = _read_parts_csv(input_path, column_mapping, transform_data)
         
         if not parts_data:
             raise CLIError("No valid parts found in CSV file")
@@ -485,7 +494,7 @@ def import_parts(ctx, input_file, update_existing, dry_run, batch_size):
         # Import parts
         db_manager = ctx.get_db_manager()
         results = _import_parts_batch(
-            parts_data, db_manager, update_existing, batch_size
+            parts_data, db_manager, update_existing, batch_size, skip_duplicates
         )
         
         # Display results
@@ -636,28 +645,112 @@ def stats(ctx, category, format):
         raise CLIError(f"Failed to get parts statistics: {e}")
 
 
-def _read_parts_csv(file_path: Path) -> List[Dict[str, Any]]:
-    """Read and parse parts data from CSV file using centralized validation."""
+# Import bulk operations from separate module
+from cli.commands.bulk_operations import bulk_update, bulk_delete, bulk_activate
+
+
+# Add bulk operations to the parts group
+parts_group.add_command(bulk_update)
+parts_group.add_command(bulk_delete)
+parts_group.add_command(bulk_activate)
+
+
+def _load_column_mapping(mapping_file: Path) -> Dict[str, str]:
+    """
+    Load column mapping from CSV file.
+    
+    Expected format: source_column,target_column
+    Example: item_code,part_number
+    """
+    mapping = {}
+    try:
+        with open(mapping_file, 'r', newline='', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            if 'source_column' not in reader.fieldnames or 'target_column' not in reader.fieldnames:
+                raise CLIError("Mapping file must have 'source_column' and 'target_column' columns")
+            
+            for row in reader:
+                source = row['source_column'].strip()
+                target = row['target_column'].strip()
+                if source and target:
+                    mapping[source] = target
+        
+        logger.info(f"Loaded {len(mapping)} column mappings")
+        return mapping
+    except Exception as e:
+        raise CLIError(f"Failed to load column mapping: {e}")
+
+
+def _apply_data_transformations(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Apply common data transformations to imported data."""
+    transformed = data.copy()
+    
+    # Transform part number to uppercase
+    if 'part_number' in transformed and transformed['part_number']:
+        transformed['part_number'] = str(transformed['part_number']).strip().upper()
+    
+    # Clean and normalize price
+    if 'authorized_price' in transformed and transformed['authorized_price']:
+        price_str = str(transformed['authorized_price']).strip()
+        # Remove currency symbols
+        price_str = price_str.replace('$', '').replace(',', '')
+        try:
+            transformed['authorized_price'] = Decimal(price_str)
+        except (ValueError, TypeError):
+            pass  # Keep original value if transformation fails
+    
+    # Clean text fields
+    for field in ['description', 'category', 'notes']:
+        if field in transformed and transformed[field]:
+            transformed[field] = str(transformed[field]).strip() or None
+    
+    return transformed
+
+
+def _read_parts_csv(file_path: Path, column_mapping: Optional[Dict[str, str]] = None,
+                   transform_data: bool = False) -> List[Dict[str, Any]]:
+    """Read and parse parts data from CSV file with optional mapping and transformations."""
     parts_data = []
     
     with open(file_path, 'r', newline='', encoding='utf-8') as f:
         reader = csv.DictReader(f)
         
+        # Apply column mapping if provided
+        if column_mapping:
+            # Remap column names
+            mapped_fieldnames = []
+            for field in reader.fieldnames:
+                mapped_field = column_mapping.get(field, field)
+                mapped_fieldnames.append(mapped_field)
+            
+            # Create new reader with mapped columns
+            f.seek(0)  # Reset file position
+            raw_reader = csv.reader(f)
+            next(raw_reader)  # Skip header
+            reader = csv.DictReader(f, fieldnames=mapped_fieldnames)
+        
         required_columns = ['part_number', 'authorized_price']
-        if not all(col in reader.fieldnames for col in required_columns):
-            raise CLIError(f"CSV file must contain columns: {', '.join(required_columns)}")
+        available_columns = reader.fieldnames or []
+        
+        if not all(col in available_columns for col in required_columns):
+            missing = [col for col in required_columns if col not in available_columns]
+            raise CLIError(f"CSV file must contain columns: {', '.join(missing)}")
         
         for row_num, row in enumerate(reader, start=2):  # Start at 2 for header
             try:
                 part_data = {
-                    'part_number': row['part_number'].strip().upper(),
-                    'authorized_price': Decimal(row['authorized_price'].strip()),
+                    'part_number': row['part_number'].strip().upper() if row.get('part_number') else '',
+                    'authorized_price': Decimal(row['authorized_price'].strip()) if row.get('authorized_price') else Decimal('0'),
                     'description': row.get('description', '').strip() or None,
                     'category': row.get('category', '').strip() or None,
                     'notes': row.get('notes', '').strip() or None
                 }
                 
-                # Basic data cleaning - empty values become None
+                # Apply transformations if requested
+                if transform_data:
+                    part_data = _apply_data_transformations(part_data)
+                
+                # Basic data validation
                 if not part_data['part_number']:
                     print_warning(f"Row {row_num}: Empty part number, skipping")
                     continue
@@ -678,7 +771,7 @@ def _read_parts_csv(file_path: Path) -> List[Dict[str, Any]]:
 def _validate_parts_data(parts_data: List[Dict[str, Any]]) -> None:
     """Validate parts data before import using centralized validation helpers."""
     # Use the new validation helper for batch validation
-    validation_result = validate_parts_data_batch(parts_data)
+    validation_result = ValidationHelper.validate_parts_data_batch(parts_data)
     
     if validation_result.has_errors:
         # Print detailed validation summary
@@ -698,8 +791,8 @@ def _validate_parts_data(parts_data: List[Dict[str, Any]]) -> None:
             print_warning(f"  • {warning}")
 
 
-def _import_parts_batch(parts_data: List[Dict[str, Any]], db_manager, 
-                       update_existing: bool, batch_size: int) -> Dict[str, Any]:
+def _import_parts_batch(parts_data: List[Dict[str, Any]], db_manager,
+                       update_existing: bool, batch_size: int, skip_duplicates: bool = False) -> Dict[str, Any]:
     """Import parts in batches with progress tracking."""
     results = {
         'total_parts': len(parts_data),
@@ -726,17 +819,23 @@ def _import_parts_batch(parts_data: List[Dict[str, Any]], db_manager,
                 db_manager.create_part(part)
                 results['imported'] += 1
             except DatabaseError as e:
-                if "already exists" in str(e) and update_existing:
-                    # Update existing part
-                    existing_part = db_manager.get_part(part.part_number)
-                    existing_part.authorized_price = part.authorized_price
-                    existing_part.description = part.description
-                    existing_part.category = part.category
-                    existing_part.notes = part.notes
-                    db_manager.update_part(existing_part)
-                    results['updated'] += 1
-                elif "already exists" in str(e):
-                    results['skipped'] += 1
+                if "already exists" in str(e):
+                    if update_existing:
+                        # Update existing part
+                        existing_part = db_manager.get_part(part.part_number)
+                        existing_part.authorized_price = part.authorized_price
+                        existing_part.description = part.description
+                        existing_part.category = part.category
+                        existing_part.notes = part.notes
+                        db_manager.update_part(existing_part)
+                        results['updated'] += 1
+                    elif skip_duplicates:
+                        # Skip without error
+                        results['skipped'] += 1
+                    else:
+                        # Default behavior - count as skipped but log warning
+                        print_warning(f"Part {part.part_number} already exists, skipping")
+                        results['skipped'] += 1
                 else:
                     raise
             

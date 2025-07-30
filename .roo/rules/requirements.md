@@ -168,3 +168,6 @@
 - **Rollback Plans**: Maintain ability to rollback configuration changes
 - **Testing**: Test configuration changes in non-production environments first
 - **Approval Processes**: Implement appropriate approval processes for critical changes
+
+### COntext Awareness
+- **roo.md** if a file is in a directory and that directory also has a roo.md file in it, the roo.md file contains important context specific to that directory and should be read prior to interacting with files in the directory

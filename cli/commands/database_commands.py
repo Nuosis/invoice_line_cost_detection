@@ -14,7 +14,7 @@ from datetime import datetime
 
 import click
 
-from cli.main import pass_context
+from cli.context import pass_context
 from cli.formatters import (
     print_success, print_warning, print_error, print_info,
     display_summary
@@ -164,7 +164,7 @@ def backup(ctx, output_path, compress, include_logs):
 @database_group.command()
 @click.argument('backup_path', type=click.Path(exists=True))
 @click.option('--force', is_flag=True, help='Skip confirmation prompt')
-@click.option('--verify', is_flag=True, default=True,
+@click.option('--verify/--no-verify', default=True,
               help='Verify backup integrity before restore')
 @pass_context
 def restore(ctx, backup_path, force, verify):

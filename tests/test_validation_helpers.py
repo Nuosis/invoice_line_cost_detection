@@ -527,7 +527,7 @@ class TestIntegrationScenarios:
     
     def test_file_validation_workflow(self):
         """Test file validation workflow."""
-        with patch('cli.validators.validate_file_path') as mock_validate:
+        with patch('cli.validation_helpers.validate_file_path') as mock_validate:
             # Mock some files as valid, some as invalid
             def mock_file_validator(path, **kwargs):
                 if 'invalid' in str(path):
@@ -538,7 +538,7 @@ class TestIntegrationScenarios:
             
             file_paths = [
                 'valid_file1.pdf',
-                'valid_file2.pdf', 
+                'valid_file2.pdf',
                 'invalid_file.pdf',
                 'another_valid.pdf'
             ]

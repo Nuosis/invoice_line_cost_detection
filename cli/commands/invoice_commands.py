@@ -16,7 +16,7 @@ from decimal import Decimal
 
 import click
 
-from cli.main import pass_context
+from cli.context import pass_context
 from cli.validators import PART_NUMBER, PRICE, OUTPUT_FORMAT
 from cli.formatters import (
     print_success, print_warning, print_error, print_info,

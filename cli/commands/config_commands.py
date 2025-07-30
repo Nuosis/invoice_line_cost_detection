@@ -13,7 +13,7 @@ from typing import Optional, Any
 
 import click
 
-from cli.main import pass_context
+from cli.context import pass_context
 from cli.validators import validate_configuration_key
 from cli.formatters import (
     print_success, print_warning, print_error, print_info,

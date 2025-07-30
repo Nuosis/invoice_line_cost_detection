@@ -359,7 +359,9 @@ class TestBatchProcessingIntegration:
         
         # Should fail with appropriate error
         assert result.exit_code != 0
-        assert 'No folders with PDF files found' in result.output
+        # Check that the exception contains the expected error message
+        assert result.exception is not None
+        assert 'No folders with PDF files found' in str(result.exception)
     
     def test_batch_command_output_directory_creation(self):
         """Test that batch command creates output directory if it doesn't exist."""

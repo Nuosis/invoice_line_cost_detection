@@ -103,19 +103,21 @@ Each task below is marked for either **Architect** (design/planning) or **Coder*
 
 ### 5. Interactive Part Discovery
 
-- **[Coder] Implement interactive and batch part discovery**
+- **✅ [Coder] Implement interactive and batch part discovery**
   - Prompt user to add unknown parts during processing
   - Collect unknowns for later review
   - Log all discovery actions
   - _Depends on: CLI, database layer_
+  - **COMPLETED:** Full interactive part discovery system with service class, prompts, CLI commands, comprehensive tests, configuration options, and complete documentation
 
 ---
 
 ### 6. Import/Export & Bulk Operations
 
-- **[Coder] Implement import/export for parts**
+- **✅ [Coder] Implement import/export for parts**
   - CSV import/export, bulk update
   - _Depends on: Database layer, CLI_
+  - **COMPLETED:** Full bulk operations implementation with comprehensive CSV processing, bulk update/delete/activate operations, data transformations, column mapping, progress tracking, dry-run mode, extensive testing, and complete documentation
 
 ---
 

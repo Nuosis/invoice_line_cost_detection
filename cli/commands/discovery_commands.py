@@ -1,339 +1,565 @@
 """
-Discovery log management commands for the CLI interface.
+CLI commands for interactive part discovery management.
 
-This module implements discovery log-related commands including:
-- list: List discovery log entries
-- export: Export discovery logs
-- cleanup: Clean up old logs
+This module provides commands for managing the part discovery system,
+including reviewing unknown parts, managing discovery sessions, and
+configuring discovery behavior.
 """
 
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 import click
+from rich.console import Console
+from rich.table import Table
+from rich.panel import Panel
 
-from cli.main import pass_context
-from cli.validators import validate_positive_integer, validate_session_id
-from cli.formatters import (
-    print_success, print_warning, print_error, print_info,
-    format_table, write_csv, format_json, display_summary
-)
-from cli.prompts import prompt_for_confirmation
-from cli.exceptions import CLIError, ValidationError
+from cli.context import get_context
+from cli.formatters import format_success, format_error, format_warning, format_info
+from cli.exceptions import CLIError, UserCancelledError
+from processing.part_discovery_service import InteractivePartDiscoveryService
+from processing.part_discovery_prompts import BatchDiscoveryPrompt
 from database.models import DatabaseError
 
 
 logger = logging.getLogger(__name__)
+console = Console()
 
 
-# Create discovery command group
 @click.group(name='discovery')
-def discovery_group():
-    """Discovery log management commands."""
+@click.pass_context
+def discovery_group(ctx):
+    """
+    Part discovery management commands.
+    
+    These commands help manage the interactive part discovery system,
+    including reviewing unknown parts and managing discovery sessions.
+    """
     pass
 
 
-@discovery_group.command()
-@click.option('--part-number', '-p', type=str, help='Filter by part number')
-@click.option('--invoice-number', '-i', type=str, help='Filter by invoice number')
-@click.option('--session-id', '-s', type=str, help='Filter by session ID')
-@click.option('--days-back', '-d', type=int, default=30, help='Show entries from last N days')
-@click.option('--action', '-a', type=click.Choice(['discovered', 'added', 'updated', 'skipped', 'price_mismatch']),
-              help='Filter by action type')
-@click.option('--limit', '-l', type=int, help='Maximum number of results')
-@click.option('--format', '-f', type=click.Choice(['table', 'csv', 'json']), default='table',
-              help='Output format')
-@pass_context
-def list(ctx, part_number, invoice_number, session_id, days_back, action, limit, format):
+@discovery_group.command('review')
+@click.option('--session-id', '-s', help='Discovery session ID to review')
+@click.option('--interactive/--no-interactive', default=True, 
+              help='Enable interactive review and addition of parts')
+@click.option('--output', '-o', type=click.Path(), 
+              help='Output file for unknown parts report (CSV format)')
+@click.pass_context
+def review_unknown_parts(ctx, session_id: Optional[str], interactive: bool, output: Optional[str]):
     """
-    List discovery log entries with filtering.
+    Review unknown parts discovered during invoice processing.
+    
+    This command allows you to review parts that were discovered but not
+    added to the database during invoice processing. You can choose to
+    add them interactively or export them for later review.
     
     Examples:
-        # List recent discoveries
-        invoice-checker discovery list
-        
-        # List discoveries for a specific part
-        invoice-checker discovery list --part-number GP0171NAVY
-        
-        # List discoveries from a specific session
-        invoice-checker discovery list --session-id abc123
-        
-        # Export discoveries to CSV
-        invoice-checker discovery list --format csv > discoveries.csv
+        invoice-checker discovery review
+        invoice-checker discovery review --session-id abc123
+        invoice-checker discovery review --no-interactive --output unknown_parts.csv
     """
     try:
-        db_manager = ctx.get_db_manager()
+        app_context = get_context()
+        discovery_service = InteractivePartDiscoveryService(app_context.db_manager)
         
-        # Validate session ID if provided
-        if session_id:
-            session_id = validate_session_id(session_id)
-        
-        # Get discovery logs
-        logs = db_manager.get_discovery_logs(
-            part_number=part_number,
-            invoice_number=invoice_number,
-            session_id=session_id,
-            days_back=days_back,
-            limit=limit
-        )
-        
-        # Filter by action if specified
-        if action:
-            logs = [log for log in logs if log.action_taken == action]
-        
-        if not logs:
-            print_info("No discovery log entries found matching the criteria.")
-            return
-        
-        # Convert to display format
-        log_data = []
-        for log in logs:
-            log_data.append({
-                'ID': log.id,
-                'Part Number': log.part_number,
-                'Invoice': log.invoice_number or 'N/A',
-                'Invoice Date': log.invoice_date or 'N/A',
-                'Discovered Price': f"${float(log.discovered_price):.4f}" if log.discovered_price else 'N/A',
-                'Authorized Price': f"${float(log.authorized_price):.4f}" if log.authorized_price else 'N/A',
-                'Action': log.action_taken,
-                'User Decision': log.user_decision or 'N/A',
-                'Discovery Date': log.discovery_date.strftime('%Y-%m-%d %H:%M:%S') if log.discovery_date else 'N/A',
-                'Session ID': log.processing_session_id or 'N/A',
-                'Notes': log.notes or ''
-            })
-        
-        # Display results
-        if format == 'table':
-            # For table format, show a subset of columns for readability
-            table_data = []
-            for item in log_data:
-                table_data.append({
-                    'Part Number': item['Part Number'],
-                    'Action': item['Action'],
-                    'Discovered Price': item['Discovered Price'],
-                    'Invoice': item['Invoice'],
-                    'Discovery Date': item['Discovery Date'][:10]  # Just the date part
-                })
-            click.echo(format_table(table_data))
-        elif format == 'csv':
-            import sys
-            write_csv(log_data, sys.stdout)
-        elif format == 'json':
-            click.echo(format_json(log_data))
-        
-        # Show summary
-        print_info(f"Found {len(logs)} discovery log entries")
-        
-        # Show action breakdown
-        if len(logs) > 1:
-            actions = {}
-            for log in logs:
-                actions[log.action_taken] = actions.get(log.action_taken, 0) + 1
-            
-            print_info("Action breakdown:")
-            for action_type, count in sorted(actions.items()):
-                print_info(f"  {action_type}: {count}")
-        
-    except ValidationError as e:
-        raise CLIError(f"Validation error: {e}")
-    except DatabaseError as e:
-        raise CLIError(f"Database error: {e}")
-    except Exception as e:
-        logger.exception("Failed to list discovery logs")
-        raise CLIError(f"Failed to list discovery logs: {e}")
-
-
-@discovery_group.command()
-@click.argument('output_file', type=click.Path())
-@click.option('--days-back', '-d', type=int, help='Export entries from last N days')
-@click.option('--session-id', '-s', type=str, help='Export specific session')
-@click.option('--part-number', '-p', type=str, help='Export entries for specific part')
-@click.option('--action', '-a', type=click.Choice(['discovered', 'added', 'updated', 'skipped', 'price_mismatch']),
-              help='Export entries with specific action')
-@pass_context
-def export(ctx, output_file, days_back, session_id, part_number, action):
-    """
-    Export discovery logs to CSV file.
-    
-    Examples:
-        # Export all recent discoveries
-        invoice-checker discovery export discoveries.csv
-        
-        # Export discoveries from last 7 days
-        invoice-checker discovery export recent.csv --days-back 7
-        
-        # Export specific session
-        invoice-checker discovery export session.csv --session-id abc123
-    """
-    try:
-        db_manager = ctx.get_db_manager()
-        output_path = Path(output_file)
-        
-        # Validate session ID if provided
-        if session_id:
-            session_id = validate_session_id(session_id)
-        
-        # Get discovery logs
-        logs = db_manager.get_discovery_logs(
-            part_number=part_number,
-            session_id=session_id,
-            days_back=days_back
-        )
-        
-        # Filter by action if specified
-        if action:
-            logs = [log for log in logs if log.action_taken == action]
-        
-        if not logs:
-            print_info("No discovery log entries found matching the criteria.")
-            return
-        
-        # Convert to export format
-        export_data = []
-        for log in logs:
-            export_data.append({
-                'id': log.id,
-                'part_number': log.part_number,
-                'invoice_number': log.invoice_number or '',
-                'invoice_date': log.invoice_date or '',
-                'discovered_price': float(log.discovered_price) if log.discovered_price else '',
-                'authorized_price': float(log.authorized_price) if log.authorized_price else '',
-                'action_taken': log.action_taken,
-                'user_decision': log.user_decision or '',
-                'discovery_date': log.discovery_date.isoformat() if log.discovery_date else '',
-                'processing_session_id': log.processing_session_id or '',
-                'notes': log.notes or ''
-            })
-        
-        # Write to CSV
-        write_csv(export_data, output_path)
-        
-        print_success(f"Exported {len(export_data)} discovery log entries to {output_path}")
-        
-        # Show export summary
-        export_summary = {
-            'total_entries': len(export_data),
-            'date_range': f"Last {days_back} days" if days_back else "All time",
-            'output_file': str(output_path)
-        }
-        
-        if session_id:
-            export_summary['session_id'] = session_id
-        if part_number:
-            export_summary['part_number'] = part_number
-        if action:
-            export_summary['action_filter'] = action
-        
-        display_summary("Export Summary", export_summary)
-        
-    except ValidationError as e:
-        raise CLIError(f"Validation error: {e}")
-    except DatabaseError as e:
-        raise CLIError(f"Database error: {e}")
-    except Exception as e:
-        logger.exception("Failed to export discovery logs")
-        raise CLIError(f"Failed to export discovery logs: {e}")
-
-
-@discovery_group.command()
-@click.option('--retention-days', '-r', type=int, default=365,
-              help='Keep logs newer than N days')
-@click.option('--dry-run', is_flag=True,
-              help='Show what would be deleted without deleting')
-@click.option('--force', is_flag=True, help='Skip confirmation prompt')
-@pass_context
-def cleanup(ctx, retention_days, dry_run, force):
-    """
-    Clean up old discovery log entries.
-    
-    Examples:
-        # Clean up logs older than 1 year (default)
-        invoice-checker discovery cleanup
-        
-        # Clean up logs older than 90 days
-        invoice-checker discovery cleanup --retention-days 90
-        
-        # Dry run to see what would be deleted
-        invoice-checker discovery cleanup --dry-run
-    """
-    try:
-        # Validate retention days
-        retention_days = validate_positive_integer(retention_days, min_value=1, max_value=3650)
-        
-        db_manager = ctx.get_db_manager()
-        
-        # Get count of logs that would be deleted
-        all_logs = db_manager.get_discovery_logs()
-        
-        # Calculate cutoff date
-        from datetime import datetime, timedelta
-        cutoff_date = datetime.now() - timedelta(days=retention_days)
-        
-        old_logs = [log for log in all_logs 
-                   if log.discovery_date and log.discovery_date < cutoff_date]
-        
-        if not old_logs:
-            print_info(f"No discovery logs older than {retention_days} days found.")
-            return
-        
-        print_info(f"Found {len(old_logs)} discovery log entries older than {retention_days} days")
-        print_info(f"Cutoff date: {cutoff_date.strftime('%Y-%m-%d %H:%M:%S')}")
-        
-        if dry_run:
-            print_info("Dry run mode - no entries will be deleted")
-            
-            # Show breakdown by action type
-            actions = {}
-            for log in old_logs:
-                actions[log.action_taken] = actions.get(log.action_taken, 0) + 1
-            
-            print_info("Entries that would be deleted by action type:")
-            for action_type, count in sorted(actions.items()):
-                print_info(f"  {action_type}: {count}")
-            
-            return
-        
-        # Confirm cleanup
-        if not force:
-            print_warning(f"This will permanently delete {len(old_logs)} discovery log entries.")
-            print_warning("This action cannot be undone!")
-            
-            if not prompt_for_confirmation(
-                f"Delete discovery logs older than {retention_days} days?",
-                default=False
-            ):
-                print_info("Cleanup cancelled.")
+        if not session_id:
+            # Get the most recent session with unknown parts
+            session_id = _get_most_recent_discovery_session(discovery_service)
+            if not session_id:
+                console.print(format_info("No discovery sessions with unknown parts found."))
                 return
         
-        # Perform cleanup
-        deleted_count = db_manager.cleanup_old_discovery_logs(retention_days)
+        # Get unknown parts for review
+        unknown_parts_data = discovery_service.get_unknown_parts_for_review(session_id)
         
-        print_success(f"Cleaned up {deleted_count} old discovery log entries!")
+        if not unknown_parts_data:
+            console.print(format_info(f"No unknown parts found in session {session_id}."))
+            return
         
-        # Show cleanup summary
-        cleanup_summary = {
-            'entries_deleted': deleted_count,
-            'retention_days': retention_days,
-            'cutoff_date': cutoff_date.strftime('%Y-%m-%d %H:%M:%S')
-        }
+        console.print(format_info(f"Found {len(unknown_parts_data)} unknown parts in session {session_id}"))
         
-        display_summary("Cleanup Summary", cleanup_summary)
+        if output:
+            # Export to CSV
+            _export_unknown_parts_csv(unknown_parts_data, output)
+            console.print(format_success(f"Unknown parts exported to {output}"))
+            return
         
-        # Show remaining log count
-        remaining_logs = db_manager.get_discovery_logs()
-        print_info(f"Remaining discovery log entries: {len(remaining_logs)}")
-        
-    except ValidationError as e:
-        raise CLIError(f"Validation error: {e}")
-    except DatabaseError as e:
-        raise CLIError(f"Database error: {e}")
+        if interactive:
+            # Interactive review and addition
+            batch_prompt = BatchDiscoveryPrompt(console)
+            decisions = batch_prompt.review_unknown_parts_batch(unknown_parts_data)
+            
+            if decisions:
+                # Process the decisions
+                results = _process_batch_decisions(discovery_service, decisions, session_id)
+                _display_batch_results(results)
+            else:
+                console.print(format_info("No parts were processed."))
+        else:
+            # Just display the unknown parts
+            _display_unknown_parts_table(unknown_parts_data)
+    
+    except (DatabaseError, CLIError) as e:
+        console.print(format_error(f"Error reviewing unknown parts: {e}"))
+        ctx.exit(1)
+    except UserCancelledError:
+        console.print(format_warning("Review cancelled by user."))
     except Exception as e:
-        logger.exception("Failed to cleanup discovery logs")
-        raise CLIError(f"Failed to cleanup discovery logs: {e}")
+        logger.exception("Unexpected error in discovery review")
+        console.print(format_error(f"Unexpected error: {e}"))
+        ctx.exit(1)
 
 
-# Add commands to the group
-discovery_group.add_command(list)
-discovery_group.add_command(export)
-discovery_group.add_command(cleanup)
+@discovery_group.command('sessions')
+@click.option('--limit', '-l', default=10, help='Number of recent sessions to show')
+@click.option('--detailed', '-d', is_flag=True, help='Show detailed session information')
+@click.pass_context
+def list_sessions(ctx, limit: int, detailed: bool):
+    """
+    List recent discovery sessions.
+    
+    Shows information about recent part discovery sessions, including
+    the number of parts discovered and processed.
+    
+    Examples:
+        invoice-checker discovery sessions
+        invoice-checker discovery sessions --limit 20 --detailed
+    """
+    try:
+        app_context = get_context()
+        
+        # Check if database manager is available
+        if not app_context.db_manager:
+            console.print(format_info("No discovery sessions found."))
+            return
+        
+        # Get recent discovery sessions from database logs
+        logs = app_context.db_manager.get_discovery_logs(limit=limit * 10)  # Get more to group by session
+        
+        if not logs:
+            console.print(format_info("No discovery sessions found."))
+            return
+        
+        # Group logs by session
+        sessions = {}
+        for log in logs:
+            session_id = log.processing_session_id
+            if session_id not in sessions:
+                sessions[session_id] = {
+                    'session_id': session_id,
+                    'parts_discovered': set(),
+                    'parts_added': 0,
+                    'first_seen': log.created_at,
+                    'last_seen': log.created_at
+                }
+            
+            sessions[session_id]['parts_discovered'].add(log.part_number)
+            if log.action_taken == 'added':
+                sessions[session_id]['parts_added'] += 1
+            
+            # Update time range
+            if log.created_at < sessions[session_id]['first_seen']:
+                sessions[session_id]['first_seen'] = log.created_at
+            if log.created_at > sessions[session_id]['last_seen']:
+                sessions[session_id]['last_seen'] = log.created_at
+        
+        # Convert to list and sort by most recent
+        session_list = list(sessions.values())
+        session_list.sort(key=lambda x: x['last_seen'], reverse=True)
+        session_list = session_list[:limit]
+        
+        if detailed:
+            _display_detailed_sessions(session_list)
+        else:
+            _display_sessions_table(session_list)
+    
+    except DatabaseError as e:
+        console.print(format_error(f"Database error: {e}"))
+        ctx.exit(1)
+    except Exception as e:
+        logger.exception("Unexpected error listing sessions")
+        console.print(format_error(f"Unexpected error: {e}"))
+        ctx.exit(1)
+
+
+@discovery_group.command('stats')
+@click.option('--session-id', '-s', help='Show stats for specific session')
+@click.option('--days', '-d', default=30, help='Number of days to include in stats')
+@click.pass_context
+def discovery_stats(ctx, session_id: Optional[str], days: int):
+    """
+    Show discovery statistics.
+    
+    Displays statistics about part discovery activities, including
+    discovery rates, success rates, and trending information.
+    
+    Examples:
+        invoice-checker discovery stats
+        invoice-checker discovery stats --session-id abc123
+        invoice-checker discovery stats --days 7
+    """
+    try:
+        app_context = get_context()
+        
+        if session_id:
+            # Show stats for specific session
+            discovery_service = InteractivePartDiscoveryService(app_context.db_manager)
+            summary = discovery_service.get_session_summary(session_id)
+            _display_session_stats(summary)
+        else:
+            # Show overall stats
+            logs = app_context.db_manager.get_discovery_logs(days=days)
+            stats = _calculate_discovery_stats(logs)
+            _display_overall_stats(stats, days)
+    
+    except DatabaseError as e:
+        console.print(format_error(f"Database error: {e}"))
+        ctx.exit(1)
+    except Exception as e:
+        logger.exception("Unexpected error getting discovery stats")
+        console.print(format_error(f"Unexpected error: {e}"))
+        ctx.exit(1)
+
+
+@discovery_group.command('export')
+@click.option('--session-id', '-s', help='Session ID to export')
+@click.option('--output', '-o', required=True, type=click.Path(), 
+              help='Output file path (CSV format)')
+@click.option('--include-added', is_flag=True, 
+              help='Include parts that were already added to database')
+@click.pass_context
+def export_discoveries(ctx, session_id: Optional[str], output: str, include_added: bool):
+    """
+    Export discovery data to CSV file.
+    
+    Exports part discovery information to a CSV file for external analysis
+    or bulk processing in spreadsheet applications.
+    
+    Examples:
+        invoice-checker discovery export --output discoveries.csv
+        invoice-checker discovery export --session-id abc123 --output session_abc123.csv
+        invoice-checker discovery export --output all_discoveries.csv --include-added
+    """
+    try:
+        app_context = get_context()
+        
+        # Get discovery logs
+        if session_id:
+            logs = app_context.db_manager.get_discovery_logs(session_id=session_id)
+        else:
+            logs = app_context.db_manager.get_discovery_logs()
+        
+        if not logs:
+            console.print(format_info("No discovery data found to export."))
+            return
+        
+        # Filter logs if needed
+        if not include_added:
+            logs = [log for log in logs if log.action_taken != 'added']
+        
+        # Export to CSV
+        _export_discovery_logs_csv(logs, output)
+        console.print(format_success(f"Exported {len(logs)} discovery records to {output}"))
+    
+    except DatabaseError as e:
+        console.print(format_error(f"Database error: {e}"))
+        ctx.exit(1)
+    except Exception as e:
+        logger.exception("Unexpected error exporting discoveries")
+        console.print(format_error(f"Unexpected error: {e}"))
+        ctx.exit(1)
+
+
+def _get_most_recent_discovery_session(discovery_service: InteractivePartDiscoveryService) -> Optional[str]:
+    """Get the most recent discovery session with unknown parts."""
+    try:
+        # This would need to be implemented in the database manager
+        # For now, return None to indicate no session found
+        return None
+    except Exception:
+        return None
+
+
+def _export_unknown_parts_csv(unknown_parts_data: List[dict], output_path: str):
+    """Export unknown parts data to CSV file."""
+    import csv
+    
+    with open(output_path, 'w', newline='', encoding='utf-8') as csvfile:
+        fieldnames = [
+            'part_number', 'occurrences', 'unique_invoices', 'avg_price', 
+            'min_price', 'max_price', 'price_variance', 'descriptions'
+        ]
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        
+        writer.writeheader()
+        for part_data in unknown_parts_data:
+            row = part_data.copy()
+            # Convert descriptions list to string
+            if 'descriptions' in row and isinstance(row['descriptions'], list):
+                row['descriptions'] = '; '.join(row['descriptions'])
+            writer.writerow(row)
+
+
+def _export_discovery_logs_csv(logs: List, output_path: str):
+    """Export discovery logs to CSV file."""
+    import csv
+    
+    with open(output_path, 'w', newline='', encoding='utf-8') as csvfile:
+        fieldnames = [
+            'part_number', 'invoice_number', 'invoice_date', 'discovered_price',
+            'authorized_price', 'action_taken', 'user_decision', 'processing_session_id',
+            'notes', 'created_at'
+        ]
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        
+        writer.writeheader()
+        for log in logs:
+            writer.writerow({
+                'part_number': log.part_number,
+                'invoice_number': log.invoice_number,
+                'invoice_date': log.invoice_date,
+                'discovered_price': float(log.discovered_price) if log.discovered_price else None,
+                'authorized_price': float(log.authorized_price) if log.authorized_price else None,
+                'action_taken': log.action_taken,
+                'user_decision': log.user_decision,
+                'processing_session_id': log.processing_session_id,
+                'notes': log.notes,
+                'created_at': log.created_at.isoformat() if log.created_at else None
+            })
+
+
+def _process_batch_decisions(discovery_service: InteractivePartDiscoveryService, 
+                           decisions: List[dict], session_id: str) -> List[dict]:
+    """Process batch decisions and return results."""
+    results = []
+    
+    for decision in decisions:
+        if decision['action'] == 'add_to_database_now':
+            try:
+                # Create part from decision
+                part_details = decision['part_details']
+                from database.models import Part
+                
+                part = Part(
+                    part_number=decision['part_number'],
+                    authorized_price=part_details['authorized_price'],
+                    description=part_details.get('description'),
+                    category=part_details.get('category'),
+                    source='batch_discovery',
+                    notes=part_details.get('notes')
+                )
+                
+                created_part = discovery_service.db_manager.create_part(part)
+                
+                results.append({
+                    'part_number': decision['part_number'],
+                    'action': 'added',
+                    'success': True,
+                    'part': created_part
+                })
+                
+            except Exception as e:
+                results.append({
+                    'part_number': decision['part_number'],
+                    'action': 'failed',
+                    'success': False,
+                    'error': str(e)
+                })
+        else:
+            results.append({
+                'part_number': decision['part_number'],
+                'action': decision['action'],
+                'success': True
+            })
+    
+    return results
+
+
+def _display_batch_results(results: List[dict]):
+    """Display results of batch processing."""
+    table = Table(title="Batch Processing Results", show_header=True, header_style="bold magenta")
+    table.add_column("Part Number", style="cyan")
+    table.add_column("Action", style="white")
+    table.add_column("Status", style="white")
+    table.add_column("Details", style="white")
+    
+    for result in results:
+        status = "✓ Success" if result['success'] else "✗ Failed"
+        status_style = "green" if result['success'] else "red"
+        
+        details = ""
+        if not result['success'] and 'error' in result:
+            details = result['error']
+        elif result['action'] == 'added':
+            details = "Added to database"
+        elif result['action'] == 'skipped':
+            details = "Skipped by user"
+        
+        table.add_row(
+            result['part_number'],
+            result['action'].replace('_', ' ').title(),
+            f"[{status_style}]{status}[/{status_style}]",
+            details
+        )
+    
+    console.print(table)
+
+
+def _display_unknown_parts_table(unknown_parts_data: List[dict]):
+    """Display unknown parts in a table format."""
+    table = Table(title="Unknown Parts", show_header=True, header_style="bold magenta")
+    table.add_column("Part Number", style="cyan")
+    table.add_column("Occurrences", justify="center")
+    table.add_column("Avg Price", justify="right")
+    table.add_column("Price Range", justify="right")
+    table.add_column("Description", max_width=30)
+    
+    for part_data in unknown_parts_data:
+        part_number = part_data['part_number']
+        occurrences = str(part_data['occurrences'])
+        
+        if 'avg_price' in part_data:
+            avg_price = f"${part_data['avg_price']:.2f}"
+            if part_data['min_price'] == part_data['max_price']:
+                price_range = f"${part_data['min_price']:.2f}"
+            else:
+                price_range = f"${part_data['min_price']:.2f} - ${part_data['max_price']:.2f}"
+        else:
+            avg_price = "N/A"
+            price_range = "N/A"
+        
+        descriptions = part_data.get('descriptions', [])
+        description = descriptions[0] if descriptions else "N/A"
+        if len(description) > 30:
+            description = description[:27] + "..."
+        
+        table.add_row(part_number, occurrences, avg_price, price_range, description)
+    
+    console.print(table)
+
+
+def _display_sessions_table(sessions: List[dict]):
+    """Display sessions in a table format."""
+    table = Table(title="Discovery Sessions", show_header=True, header_style="bold magenta")
+    table.add_column("Session ID", style="cyan", max_width=20)
+    table.add_column("Parts Discovered", justify="center")
+    table.add_column("Parts Added", justify="center")
+    table.add_column("First Seen", style="white")
+    table.add_column("Last Seen", style="white")
+    
+    for session in sessions:
+        session_id = session['session_id'][:18] + "..." if len(session['session_id']) > 20 else session['session_id']
+        parts_discovered = str(len(session['parts_discovered']))
+        parts_added = str(session['parts_added'])
+        first_seen = session['first_seen'].strftime('%Y-%m-%d %H:%M') if session['first_seen'] else "N/A"
+        last_seen = session['last_seen'].strftime('%Y-%m-%d %H:%M') if session['last_seen'] else "N/A"
+        
+        table.add_row(session_id, parts_discovered, parts_added, first_seen, last_seen)
+    
+    console.print(table)
+
+
+def _display_detailed_sessions(sessions: List[dict]):
+    """Display detailed session information."""
+    for session in sessions:
+        panel_content = []
+        panel_content.append(f"Session ID: {session['session_id']}")
+        panel_content.append(f"Parts Discovered: {len(session['parts_discovered'])}")
+        panel_content.append(f"Parts Added: {session['parts_added']}")
+        panel_content.append(f"First Seen: {session['first_seen'].strftime('%Y-%m-%d %H:%M:%S') if session['first_seen'] else 'N/A'}")
+        panel_content.append(f"Last Seen: {session['last_seen'].strftime('%Y-%m-%d %H:%M:%S') if session['last_seen'] else 'N/A'}")
+        
+        if session['parts_discovered']:
+            panel_content.append(f"Discovered Parts: {', '.join(list(session['parts_discovered'])[:5])}")
+            if len(session['parts_discovered']) > 5:
+                panel_content.append(f"... and {len(session['parts_discovered']) - 5} more")
+        
+        panel = Panel(
+            "\n".join(panel_content),
+            title=f"Session {session['session_id'][:8]}...",
+            title_align="left",
+            border_style="blue"
+        )
+        console.print(panel)
+        console.print()
+
+
+def _display_session_stats(summary: dict):
+    """Display statistics for a specific session."""
+    panel_content = []
+    panel_content.append(f"Session ID: {summary.get('session_id', 'N/A')}")
+    panel_content.append(f"Unique Parts Discovered: {summary.get('unique_parts_discovered', 0)}")
+    panel_content.append(f"Total Occurrences: {summary.get('total_occurrences', 0)}")
+    panel_content.append(f"Parts Added: {summary.get('parts_added', 0)}")
+    panel_content.append(f"Processing Mode: {summary.get('processing_mode', 'N/A')}")
+    
+    if 'duration_minutes' in summary:
+        panel_content.append(f"Duration: {summary['duration_minutes']:.1f} minutes")
+    
+    panel = Panel(
+        "\n".join(panel_content),
+        title="Session Statistics",
+        title_align="left",
+        border_style="green"
+    )
+    console.print(panel)
+
+
+def _display_overall_stats(stats: dict, days: int):
+    """Display overall discovery statistics."""
+    panel_content = []
+    panel_content.append(f"Time Period: Last {days} days")
+    panel_content.append(f"Total Discoveries: {stats.get('total_discoveries', 0)}")
+    panel_content.append(f"Unique Parts: {stats.get('unique_parts', 0)}")
+    panel_content.append(f"Parts Added: {stats.get('parts_added', 0)}")
+    panel_content.append(f"Parts Skipped: {stats.get('parts_skipped', 0)}")
+    panel_content.append(f"Success Rate: {stats.get('success_rate', 0):.1f}%")
+    panel_content.append(f"Active Sessions: {stats.get('active_sessions', 0)}")
+    
+    panel = Panel(
+        "\n".join(panel_content),
+        title="Discovery Statistics",
+        title_align="left",
+        border_style="green"
+    )
+    console.print(panel)
+
+
+def _calculate_discovery_stats(logs: List) -> dict:
+    """Calculate overall discovery statistics from logs."""
+    if not logs:
+        return {
+            'total_discoveries': 0,
+            'unique_parts': 0,
+            'parts_added': 0,
+            'parts_skipped': 0,
+            'success_rate': 0.0,
+            'active_sessions': 0
+        }
+    
+    unique_parts = set()
+    parts_added = 0
+    parts_skipped = 0
+    sessions = set()
+    
+    for log in logs:
+        unique_parts.add(log.part_number)
+        sessions.add(log.processing_session_id)
+        
+        if log.action_taken == 'added':
+            parts_added += 1
+        elif log.action_taken == 'skipped':
+            parts_skipped += 1
+    
+    total_processed = parts_added + parts_skipped
+    success_rate = (parts_added / total_processed * 100) if total_processed > 0 else 0
+    
+    return {
+        'total_discoveries': len(logs),
+        'unique_parts': len(unique_parts),
+        'parts_added': parts_added,
+        'parts_skipped': parts_skipped,
+        'success_rate': success_rate,
+        'active_sessions': len(sessions)
+    }

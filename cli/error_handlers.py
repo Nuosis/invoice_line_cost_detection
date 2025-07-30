@@ -137,7 +137,7 @@ class ErrorHandler:
             print_error("Insufficient memory for processing")
             print_info("Recovery suggestions:")
             print_info("  1. Process files in smaller batches")
-            print_info("  2. Close other applications to free memory")
+            print_info("  2. close other applications to free memory")
             print_info("  3. Process files individually instead of in batch")
             print_info("  4. Consider upgrading system memory")
             
@@ -163,7 +163,7 @@ class ErrorHandler:
         
         print_error(f"Input validation failed: {error}")
         
-        if "part_number" in str(error).lower():
+        if field_name == "part_number" or "part number" in str(error).lower():
             print_info("Part number requirements:")
             print_info("  - Must contain only letters, numbers, underscores, hyphens, and periods")
             print_info("  - Cannot be empty or contain only whitespace")
@@ -265,15 +265,16 @@ class ErrorHandler:
                 try:
                     return func(*args, **kwargs)
                     
-                except DatabaseError as e:
-                    logger.exception(f"Database error in {func.__name__}")
-                    ErrorHandler.handle_database_error(e, error_context)
-                    raise CLIError(f"Database operation failed: {e}")
+                # Handle specific exceptions first (most specific to least specific)
+                except PartNotFoundError as e:
+                    logger.debug(f"Part not found in {func.__name__}: {e}")
+                    ErrorHandler.handle_part_not_found_error(e, error_context)
+                    raise CLIError(f"Part not found: {e}")
                     
-                except ProcessingError as e:
-                    logger.exception(f"Processing error in {func.__name__}")
-                    ErrorHandler.handle_processing_error(e, error_context)
-                    raise CLIError(f"Processing failed: {e}")
+                except ConfigurationError as e:
+                    logger.warning(f"Configuration error in {func.__name__}: {e}")
+                    ErrorHandler.handle_configuration_error(e, error_context)
+                    raise CLIError(f"Configuration error: {e}")
                     
                 except ValidationError as e:
                     logger.debug(f"Validation error in {func.__name__}: {e}")
@@ -285,15 +286,15 @@ class ErrorHandler:
                     ErrorHandler.handle_cli_validation_error(e, error_context)
                     raise CLIError(f"Command validation failed: {e}")
                     
-                except PartNotFoundError as e:
-                    logger.debug(f"Part not found in {func.__name__}: {e}")
-                    ErrorHandler.handle_part_not_found_error(e, error_context)
-                    raise CLIError(f"Part not found: {e}")
+                except ProcessingError as e:
+                    logger.exception(f"Processing error in {func.__name__}")
+                    ErrorHandler.handle_processing_error(e, error_context)
+                    raise CLIError(f"Processing failed: {e}")
                     
-                except ConfigurationError as e:
-                    logger.warning(f"Configuration error in {func.__name__}: {e}")
-                    ErrorHandler.handle_configuration_error(e, error_context)
-                    raise CLIError(f"Configuration error: {e}")
+                except DatabaseError as e:
+                    logger.exception(f"Database error in {func.__name__}")
+                    ErrorHandler.handle_database_error(e, error_context)
+                    raise CLIError(f"Database operation failed: {e}")
                     
                 except FileNotFoundError as e:
                     logger.error(f"File not found in {func.__name__}: {e}")
@@ -377,16 +378,29 @@ def handle_database_operation_error(error: Exception, operation: str, **context)
     """
     context['operation'] = operation
     
-    if isinstance(error, DatabaseError):
-        ErrorHandler.handle_database_error(error, context)
-    elif isinstance(error, PartNotFoundError):
+    # Check for specific errors first (most specific to least specific)
+    if isinstance(error, PartNotFoundError):
         ErrorHandler.handle_part_not_found_error(error, context)
     elif isinstance(error, ConfigurationError):
         ErrorHandler.handle_configuration_error(error, context)
+    elif isinstance(error, DatabaseError):
+        ErrorHandler.handle_database_error(error, context)
     else:
         print_error(f"Error during {operation}: {error}")
         print_info("Try checking database status: invoice-checker status")
 
 
 # Export the main decorator for easy use
-error_handler = ErrorHandler.with_error_handling
+def error_handler(error_context: Optional[Dict[str, Any]] = None):
+    """
+    Decorator for consistent error handling across commands.
+    
+    This is an alias for ErrorHandler.with_error_handling for backward compatibility.
+    
+    Args:
+        error_context: Additional context to include in error handling
+        
+    Returns:
+        Decorator function that wraps command functions with error handling
+    """
+    return ErrorHandler.with_error_handling(error_context)
