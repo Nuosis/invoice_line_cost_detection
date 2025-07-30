@@ -651,3 +651,251 @@ def is_price_mismatch(discovered_price: Decimal, authorized_price: Decimal, tole
         bool: True if prices don't match within tolerance
     """
     return abs(float(discovered_price - authorized_price)) > tolerance
+
+
+class DatabaseBackupManager:
+    """
+    Manages database backup and restore operations.
+    """
+    
+    def __init__(self, db_manager: DatabaseManager):
+        """
+        Initialize backup manager.
+        
+        Args:
+            db_manager: DatabaseManager instance
+        """
+        self.db_manager = db_manager
+        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+    
+    def create_backup(self, backup_path: str, compress: bool = False,
+                     include_logs: bool = True) -> Dict[str, Any]:
+        """
+        Create a database backup.
+        
+        Args:
+            backup_path: Path for the backup file
+            compress: Whether to compress the backup
+            include_logs: Whether to include discovery logs
+            
+        Returns:
+            Dict[str, Any]: Backup operation results
+        """
+        try:
+            import shutil
+            import gzip
+            from pathlib import Path
+            
+            backup_path_obj = Path(backup_path)
+            backup_path_obj.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Create backup by copying database file
+            db_path = Path(self.db_manager.db_path)
+            
+            if compress and not backup_path.endswith('.gz'):
+                # Compress the backup
+                with open(db_path, 'rb') as f_in:
+                    with gzip.open(backup_path, 'wb') as f_out:
+                        shutil.copyfileobj(f_in, f_out)
+            else:
+                # Regular copy
+                shutil.copy2(db_path, backup_path)
+            
+            backup_size = backup_path_obj.stat().st_size
+            
+            self.logger.info(f"Backup created successfully: {backup_path}")
+            
+            return {
+                'success': True,
+                'backup_path': backup_path,
+                'backup_size': backup_size,
+                'backup_time': datetime.now().isoformat(),
+                'compressed': compress
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Backup creation failed: {e}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    def restore_backup(self, backup_path: str, target_path: str,
+                      verify_backup: bool = False, force: bool = False) -> Dict[str, Any]:
+        """
+        Restore database from backup.
+        
+        Args:
+            backup_path: Path to backup file
+            target_path: Path to restore to
+            verify_backup: Whether to verify backup integrity
+            force: Whether to force restore without confirmation
+            
+        Returns:
+            Dict[str, Any]: Restore operation results
+        """
+        try:
+            import shutil
+            import gzip
+            from pathlib import Path
+            
+            backup_path_obj = Path(backup_path)
+            target_path_obj = Path(target_path)
+            
+            if not backup_path_obj.exists():
+                return {
+                    'success': False,
+                    'error': f'Backup file not found: {backup_path}'
+                }
+            
+            # Verify backup if requested
+            backup_verified = True
+            if verify_backup:
+                try:
+                    # Try to open backup as SQLite database
+                    import sqlite3
+                    if backup_path.endswith('.gz'):
+                        # Decompress temporarily for verification
+                        temp_path = backup_path_obj.parent / f"temp_verify_{uuid.uuid4().hex}.db"
+                        with gzip.open(backup_path, 'rb') as f_in:
+                            with open(temp_path, 'wb') as f_out:
+                                shutil.copyfileobj(f_in, f_out)
+                        
+                        # Verify decompressed file
+                        with sqlite3.connect(str(temp_path)) as conn:
+                            conn.execute("SELECT COUNT(*) FROM sqlite_master")
+                        
+                        temp_path.unlink()  # Clean up
+                    else:
+                        # Verify regular backup - check if it's a valid SQLite file
+                        try:
+                            with sqlite3.connect(backup_path) as conn:
+                                conn.execute("SELECT COUNT(*) FROM sqlite_master")
+                        except sqlite3.DatabaseError as db_error:
+                            # Check if file contains invalid data (like text)
+                            with open(backup_path, 'rb') as f:
+                                first_bytes = f.read(16)
+                                if not first_bytes.startswith(b'SQLite format 3'):
+                                    raise sqlite3.DatabaseError("File is not a valid SQLite database - appears to be corrupted")
+                            raise db_error
+                    
+                    backup_verified = True
+                except Exception as e:
+                    return {
+                        'success': False,
+                        'error': f'Backup verification failed: {e}',
+                        'backup_verified': False
+                    }
+            
+            # Close current database connection
+            self.db_manager.close()
+            
+            # Restore backup
+            if backup_path.endswith('.gz'):
+                # Decompress and restore
+                with gzip.open(backup_path, 'rb') as f_in:
+                    with open(target_path, 'wb') as f_out:
+                        shutil.copyfileobj(f_in, f_out)
+            else:
+                # Regular copy
+                shutil.copy2(backup_path, target_path)
+            
+            self.logger.info(f"Database restored from backup: {backup_path}")
+            
+            return {
+                'success': True,
+                'backup_path': backup_path,
+                'target_path': target_path,
+                'backup_verified': backup_verified,
+                'forced': force,
+                'restore_time': datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Backup restore failed: {e}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    def close(self):
+        """Close the backup manager."""
+        pass
+
+
+class DatabaseMigrator:
+    """
+    Manages database migrations and schema updates.
+    """
+    
+    def __init__(self, db_manager: DatabaseManager):
+        """
+        Initialize database migrator.
+        
+        Args:
+            db_manager: DatabaseManager instance
+        """
+        self.db_manager = db_manager
+        self.db_path = db_manager.db_path
+        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+    
+    def migrate_database(self, target_version: str = None, dry_run: bool = False,
+                        backup_first: bool = False, backup_dir: str = None) -> Dict[str, Any]:
+        """
+        Migrate database to target version.
+        
+        Args:
+            target_version: Target version to migrate to
+            dry_run: Whether to perform a dry run
+            backup_first: Whether to create backup before migration
+            backup_dir: Directory for backup files
+            
+        Returns:
+            Dict[str, Any]: Migration results
+        """
+        try:
+            from database.db_migration import DatabaseMigration
+            
+            current_version = self.db_manager.get_config_value('database_version', '1.0')
+            target_version = target_version or '1.0'
+            
+            migration = DatabaseMigration(self.db_manager.db_path)
+            
+            result = {
+                'current_version': current_version,
+                'target_version': target_version,
+                'migrations_needed': 0,
+                'migrations_applied': 0,
+                'dry_run': dry_run,
+                'backup_created': False
+            }
+            
+            if backup_first and backup_dir:
+                # Create pre-migration backup
+                backup_manager = DatabaseBackupManager(self.db_manager)
+                backup_path = Path(backup_dir) / f"pre_migration_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
+                backup_result = backup_manager.create_backup(str(backup_path))
+                result['backup_created'] = backup_result['success']
+            
+            if dry_run:
+                # Just return what would be done
+                if current_version != target_version:
+                    result['migrations_needed'] = 1
+                return result
+            
+            # Perform actual migration
+            if current_version != target_version:
+                success = migration.migrate_to_version(target_version)
+                if success:
+                    result['migrations_applied'] = 1
+                else:
+                    result['error'] = 'Migration failed'
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"Database migration failed: {e}")
+            return {
+                'success': False,
+                'error': str(e)
+            }

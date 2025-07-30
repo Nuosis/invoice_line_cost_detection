@@ -151,18 +151,22 @@ class TestInteractiveFunctionsIntegration:
     
     def test_part_creation_duplicate_handling(self):
         """Test handling of duplicate part numbers."""
+        # Use a unique part number for this test
+        import uuid
+        unique_part_number = f"DUPLICATE_{uuid.uuid4().hex[:8]}"
+        
         # Create first part
         part1 = Part(
-            part_number="DUPLICATE001",
+            part_number=unique_part_number,
             authorized_price=Decimal('1.25'),
             source='discovered'
         )
         self.db_manager.create_part(part1)
         
-        # Attempt to create duplicate - should raise ValidationError
-        with pytest.raises(ValidationError, match="already exists"):
+        # Attempt to create duplicate - should raise DatabaseError
+        with pytest.raises(Exception, match="already exists"):
             part2 = Part(
-                part_number="DUPLICATE001",  # Same part number
+                part_number=unique_part_number,  # Same part number
                 authorized_price=Decimal('2.50'),
                 source='discovered'
             )

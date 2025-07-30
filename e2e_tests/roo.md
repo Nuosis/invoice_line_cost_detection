@@ -1,6 +1,10 @@
 # End-to-End Testing Rules and Guidelines
 
 ## Core Testing Principles
+# Run inidivual tests
+PYTHONPATH=. uv run python e2e_tests/[[test to run]] 
+eg...
+PYTHONPATH=. uv run pytest e2e_tests/test_initial_database_setup.py -v
 
 ### NO MOCKING POLICY
 - **MOCKING IS STRICTLY PROHIBITED** in all e2e tests

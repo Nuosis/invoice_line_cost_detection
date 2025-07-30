@@ -9,6 +9,7 @@ import sqlite3
 import logging
 import shutil
 import uuid
+import csv
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -322,7 +323,7 @@ class DatabaseManager:
                 except sqlite3.IntegrityError as e:
                     conn.rollback()
                     if "UNIQUE constraint failed" in str(e):
-                        raise ValidationError(f"Part {part.part_number} already exists")
+                        raise DatabaseError(f"Part {part.part_number} already exists")
                     raise DatabaseError(f"Failed to create part: {e}")
                 except Exception as e:
                     conn.rollback()
@@ -368,12 +369,13 @@ class DatabaseManager:
             logger.error(f"Failed to retrieve part {part_number}: {e}")
             raise DatabaseError(f"Failed to retrieve part: {e}")
 
-    def update_part(self, part: Part) -> Part:
+    def update_part(self, part_number_or_part: Union[str, Part], **kwargs) -> Part:
         """
         Update an existing part in the database.
         
         Args:
-            part: Part instance with updated data
+            part_number_or_part: Either a Part instance or part number string
+            **kwargs: Fields to update (authorized_price, description, category, etc.)
             
         Returns:
             Part: Updated part with new timestamp
@@ -384,34 +386,80 @@ class DatabaseManager:
             DatabaseError: If database operation fails
         """
         try:
-            # Validate part data
-            part.validate()
-            
-            with self.transaction() as conn:
-                # Update timestamp
-                part.last_updated = datetime.now()
+            if isinstance(part_number_or_part, Part):
+                # Original behavior - update with Part instance
+                part = part_number_or_part
+                part.validate()
                 
-                cursor = conn.execute("""
-                    UPDATE parts SET
-                        authorized_price = ?, description = ?, category = ?, source = ?,
-                        first_seen_invoice = ?, last_updated = ?, is_active = ?, notes = ?
-                    WHERE part_number = ?
-                """, (
-                    float(part.authorized_price), part.description, part.category,
-                    part.source, part.first_seen_invoice, part.last_updated.isoformat(),
-                    part.is_active, part.notes, part.part_number
-                ))
+                with self.transaction() as conn:
+                    part.last_updated = datetime.now()
+                    
+                    cursor = conn.execute("""
+                        UPDATE parts SET
+                            authorized_price = ?, description = ?, category = ?, source = ?,
+                            first_seen_invoice = ?, last_updated = ?, is_active = ?, notes = ?
+                        WHERE part_number = ?
+                    """, (
+                        float(part.authorized_price), part.description, part.category,
+                        part.source, part.first_seen_invoice, part.last_updated.isoformat(),
+                        part.is_active, part.notes, part.part_number
+                    ))
+                    
+                    if cursor.rowcount == 0:
+                        raise PartNotFoundError(f"Part {part.part_number} not found")
+                    
+                    logger.info(f"Updated part: {part.part_number}")
+                    return part
+            else:
+                # New behavior - update by part number with kwargs
+                part_number = part_number_or_part
                 
-                if cursor.rowcount == 0:
-                    raise PartNotFoundError(f"Part {part.part_number} not found")
+                # Get existing part
+                existing_part = self.get_part(part_number)
                 
-                logger.info(f"Updated part: {part.part_number}")
-                return part
+                # Update fields from kwargs
+                if 'authorized_price' in kwargs:
+                    existing_part.authorized_price = Decimal(str(kwargs['authorized_price']))
+                if 'description' in kwargs:
+                    existing_part.description = kwargs['description']
+                if 'category' in kwargs:
+                    existing_part.category = kwargs['category']
+                if 'source' in kwargs:
+                    existing_part.source = kwargs['source']
+                if 'first_seen_invoice' in kwargs:
+                    existing_part.first_seen_invoice = kwargs['first_seen_invoice']
+                if 'is_active' in kwargs:
+                    existing_part.is_active = kwargs['is_active']
+                if 'notes' in kwargs:
+                    existing_part.notes = kwargs['notes']
+                
+                # Validate and save
+                existing_part.validate()
+                
+                with self.transaction() as conn:
+                    existing_part.last_updated = datetime.now()
+                    
+                    cursor = conn.execute("""
+                        UPDATE parts SET
+                            authorized_price = ?, description = ?, category = ?, source = ?,
+                            first_seen_invoice = ?, last_updated = ?, is_active = ?, notes = ?
+                        WHERE part_number = ?
+                    """, (
+                        float(existing_part.authorized_price), existing_part.description, existing_part.category,
+                        existing_part.source, existing_part.first_seen_invoice, existing_part.last_updated.isoformat(),
+                        existing_part.is_active, existing_part.notes, existing_part.part_number
+                    ))
+                    
+                    if cursor.rowcount == 0:
+                        raise PartNotFoundError(f"Part {part_number} not found")
+                    
+                    logger.info(f"Updated part: {part_number}")
+                    return existing_part
                 
         except PartNotFoundError:
             raise
         except Exception as e:
-            logger.error(f"Failed to update part {part.part_number}: {e}")
+            logger.error(f"Failed to update part: {e}")
             raise DatabaseError(f"Failed to update part: {e}")
 
     def delete_part(self, part_number: str, soft_delete: bool = True) -> None:
@@ -454,13 +502,13 @@ class DatabaseManager:
             logger.error(f"Failed to delete part {part_number}: {e}")
             raise DatabaseError(f"Failed to delete part: {e}")
 
-    def list_parts(self, active_only: bool = True, category: Optional[str] = None,
+    def list_parts(self, active_only: bool = False, category: Optional[str] = None,
                    limit: Optional[int] = None, offset: int = 0) -> List[Part]:
         """
         List parts with optional filtering.
         
         Args:
-            active_only: If True, only return active parts
+            active_only: If True, only return active parts; if False, return all parts
             category: Optional category filter
             limit: Maximum number of parts to return
             offset: Number of parts to skip
@@ -795,17 +843,22 @@ class DatabaseManager:
             
         Returns:
             Any: Configuration value converted to proper type, or default
+            
+        Raises:
+            DatabaseError: If key not found and no default provided
         """
         try:
             config = self.get_config(key)
             return config.get_typed_value()
         except ConfigurationError:
+            if default is None:
+                raise DatabaseError(f"Configuration key '{key}' not found")
             return default
 
     def set_config_value(self, key: str, value: Any, data_type: Optional[str] = None,
                         description: Optional[str] = None, category: str = 'general') -> None:
         """
-        Set a configuration value with automatic type detection.
+        Set a configuration value with automatic type detection and validation.
         
         Args:
             key: Configuration key
@@ -813,7 +866,13 @@ class DatabaseManager:
             data_type: Optional explicit data type
             description: Optional description
             category: Configuration category
+            
+        Raises:
+            ValidationError: If value is invalid for the configuration
         """
+        # Track whether data_type was explicitly provided
+        explicit_data_type = data_type is not None
+        
         # Auto-detect data type if not provided
         if data_type is None:
             if isinstance(value, bool):
@@ -824,6 +883,9 @@ class DatabaseManager:
                 data_type = 'json'
             else:
                 data_type = 'string'
+        
+        # Validate specific configuration values
+        self._validate_config_value(key, value, data_type)
         
         config = Configuration(
             key=key,
@@ -837,7 +899,30 @@ class DatabaseManager:
         try:
             # Try to update existing config
             existing_config = self.get_config(key)
-            existing_config.set_typed_value(value)
+            
+            # For existing configs, preserve the original data type unless explicitly overridden
+            if not explicit_data_type:
+                # Use the existing configuration's data type
+                original_data_type = existing_config.data_type
+                # Re-validate with the original data type
+                self._validate_config_value(key, value, original_data_type)
+                
+                # Create a temporary config with the original data type for conversion
+                temp_config = Configuration(
+                    key=key,
+                    value='',
+                    data_type=original_data_type,
+                    description=existing_config.description,
+                    category=existing_config.category
+                )
+                temp_config.set_typed_value(value)
+                existing_config.value = temp_config.value
+                existing_config.data_type = original_data_type
+            else:
+                # Use the explicitly provided data type
+                existing_config.set_typed_value(value)
+                existing_config.data_type = data_type
+            
             if description:
                 existing_config.description = description
             if category != 'general':
@@ -846,6 +931,96 @@ class DatabaseManager:
         except ConfigurationError:
             # Create new config if it doesn't exist
             self.create_config(config)
+    
+    def _validate_config_value(self, key: str, value: Any, data_type: str) -> None:
+        """
+        Validate configuration values according to business rules.
+        
+        Args:
+            key: Configuration key
+            value: Value to validate
+            data_type: Expected data type
+            
+        Raises:
+            ValidationError: If value is invalid
+        """
+        # Validate data type conversion
+        if data_type == 'boolean':
+            if isinstance(value, str):
+                if value.lower() not in ('true', 'false', '1', '0', 'yes', 'no', 'on', 'off'):
+                    raise ValidationError(f"Invalid boolean value: '{value}'. Must be true/false, 1/0, yes/no, or on/off")
+            elif not isinstance(value, bool):
+                raise ValidationError(f"Invalid boolean value: '{value}'. Must be a boolean or valid string representation")
+        
+        elif data_type == 'number':
+            try:
+                float_value = float(value)
+                # Validate specific numeric constraints
+                if key in ('log_retention_days', 'backup_retention_days') and float_value < 0:
+                    raise ValidationError(f"Value for '{key}' must be non-negative")
+                if key == 'price_tolerance' and (float_value < 0 or float_value > 1):
+                    raise ValidationError(f"Price tolerance must be between 0 and 1")
+            except (ValueError, TypeError):
+                raise ValidationError(f"Invalid number value: '{value}'. Must be a valid number")
+        
+        # Validate specific configuration keys
+        if key == 'validation_mode':
+            valid_modes = ('parts_based', 'threshold_based')
+            if value not in valid_modes:
+                raise ValidationError(f"Invalid validation mode: '{value}'. Must be one of: {', '.join(valid_modes)}")
+        
+        elif key == 'default_output_format':
+            valid_formats = ('csv', 'json', 'txt')
+            if value not in valid_formats:
+                raise ValidationError(f"Invalid output format: '{value}'. Must be one of: {', '.join(valid_formats)}")
+
+    def reset_config_to_default(self, key: str) -> bool:
+        """
+        Reset a configuration value to its default.
+        
+        Args:
+            key: Configuration key to reset
+            
+        Returns:
+            bool: True if reset successful, False otherwise
+            
+        Raises:
+            DatabaseError: If database operation fails
+        """
+        try:
+            # Define default configurations
+            default_configs = {
+                'validation_mode': 'parts_based',
+                'default_output_format': 'csv',
+                'interactive_discovery': 'true',
+                'auto_add_discovered_parts': 'false',
+                'price_tolerance': '0.001',
+                'backup_retention_days': '30',
+                'log_retention_days': '365',
+                'database_version': '1.0'
+            }
+            
+            if key not in default_configs:
+                raise DatabaseError(f"No default value defined for configuration key: {key}")
+            
+            default_value = default_configs[key]
+            
+            with self.get_connection() as conn:
+                cursor = conn.execute(
+                    "UPDATE config SET value = ? WHERE key = ?",
+                    (default_value, key)
+                )
+                
+                if cursor.rowcount == 0:
+                    raise DatabaseError(f"Configuration key '{key}' not found")
+                
+                conn.commit()
+                logger.info(f"Reset configuration '{key}' to default value: {default_value}")
+                return True
+                
+        except sqlite3.Error as e:
+            logger.error(f"Failed to reset configuration '{key}': {e}")
+            raise DatabaseError(f"Failed to reset configuration: {e}")
 
     def _row_to_config(self, row: sqlite3.Row) -> Configuration:
         """
@@ -1152,6 +1327,292 @@ class DatabaseManager:
             logger.error(f"Failed to cleanup old backups: {e}")
             raise DatabaseError(f"Failed to cleanup old backups: {e}")
 
+    # CSV Import/Export Operations
+    
+    def import_parts_from_csv(self, csv_file_path: str, update_existing: bool = False) -> int:
+        """
+        Import parts from a CSV file.
+        
+        Args:
+            csv_file_path: Path to the CSV file
+            update_existing: If True, update existing parts; if False, skip duplicates
+            
+        Returns:
+            int: Number of parts imported
+            
+        Raises:
+            DatabaseError: If import operation fails
+        """
+        try:
+            csv_path = Path(csv_file_path)
+            if not csv_path.exists():
+                raise DatabaseError(f"CSV file not found: {csv_file_path}")
+            
+            imported_count = 0
+            
+            with open(csv_path, 'r', encoding='utf-8') as csvfile:
+                reader = csv.DictReader(csvfile)
+                
+                for row in reader:
+                    try:
+                        # Create Part from CSV row
+                        part = Part(
+                            part_number=row['part_number'],
+                            authorized_price=Decimal(str(row['authorized_price'])),
+                            description=row.get('description', ''),
+                            category=row.get('category', ''),
+                            source=row.get('source', 'imported'),
+                            first_seen_invoice=row.get('first_seen_invoice', ''),
+                            notes=row.get('notes', '')
+                        )
+                        
+                        # Handle is_active field
+                        if 'is_active' in row:
+                            part.is_active = str(row['is_active']).lower() in ('true', '1', 'yes')
+                        
+                        try:
+                            # Try to create new part
+                            self.create_part(part)
+                            imported_count += 1
+                            logger.debug(f"Imported part: {part.part_number}")
+                        except DatabaseError as e:
+                            if "already exists" in str(e) and update_existing:
+                                # Update existing part
+                                self.update_part(part)
+                                imported_count += 1
+                                logger.debug(f"Updated existing part: {part.part_number}")
+                            else:
+                                logger.warning(f"Skipped part {part.part_number}: {e}")
+                                
+                    except Exception as e:
+                        logger.error(f"Failed to import row {row}: {e}")
+                        continue
+            
+            logger.info(f"Imported {imported_count} parts from {csv_file_path}")
+            return imported_count
+            
+        except Exception as e:
+            logger.error(f"Failed to import CSV file {csv_file_path}: {e}")
+            raise DatabaseError(f"Failed to import CSV file: {e}")
+    
+    def export_parts_to_csv(self, csv_file_path: str, active_only: bool = False,
+                           category: Optional[str] = None) -> int:
+        """
+        Export parts to a CSV file.
+        
+        Args:
+            csv_file_path: Path to the output CSV file
+            active_only: If True, only export active parts
+            category: Optional category filter
+            
+        Returns:
+            int: Number of parts exported
+            
+        Raises:
+            DatabaseError: If export operation fails
+        """
+        try:
+            csv_path = Path(csv_file_path)
+            csv_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Get parts to export
+            parts = self.list_parts(active_only=active_only, category=category)
+            
+            with open(csv_path, 'w', newline='', encoding='utf-8') as csvfile:
+                fieldnames = [
+                    'part_number', 'authorized_price', 'description', 'category',
+                    'source', 'first_seen_invoice', 'created_date', 'last_updated',
+                    'is_active', 'notes'
+                ]
+                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                
+                writer.writeheader()
+                
+                for part in parts:
+                    writer.writerow({
+                        'part_number': part.part_number,
+                        'authorized_price': f"{part.authorized_price:.2f}",
+                        'description': part.description or '',
+                        'category': part.category or '',
+                        'source': part.source or '',
+                        'first_seen_invoice': part.first_seen_invoice or '',
+                        'created_date': part.created_date.isoformat() if part.created_date else '',
+                        'last_updated': part.last_updated.isoformat() if part.last_updated else '',
+                        'is_active': str(part.is_active).lower(),
+                        'notes': part.notes or ''
+                    })
+            
+            logger.info(f"Exported {len(parts)} parts to {csv_file_path}")
+            return len(parts)
+            
+        except Exception as e:
+            logger.error(f"Failed to export parts to CSV {csv_file_path}: {e}")
+            raise DatabaseError(f"Failed to export parts to CSV: {e}")
+    
+    # Parts Statistics Operations
+    
+    def get_parts_statistics(self, category: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Get comprehensive parts statistics.
+        
+        Args:
+            category: Optional category filter
+            
+        Returns:
+            Dict[str, Any]: Statistics dictionary
+            
+        Raises:
+            DatabaseError: If statistics operation fails
+        """
+        try:
+            with self.get_connection() as conn:
+                stats = {}
+                
+                # Base query conditions
+                where_clause = "WHERE 1=1"
+                params = []
+                
+                if category:
+                    where_clause += " AND category = ?"
+                    params.append(category)
+                
+                # Total parts count
+                cursor = conn.execute(f"SELECT COUNT(*) FROM parts {where_clause}", params)
+                stats['total_parts'] = cursor.fetchone()[0]
+                
+                # Active parts count
+                active_where = where_clause + " AND is_active = 1"
+                cursor = conn.execute(f"SELECT COUNT(*) FROM parts {active_where}", params)
+                stats['active_parts'] = cursor.fetchone()[0]
+                
+                # Inactive parts count
+                stats['inactive_parts'] = stats['total_parts'] - stats['active_parts']
+                
+                if not category:
+                    # Category breakdown (only if not filtering by category)
+                    cursor = conn.execute("""
+                        SELECT category, COUNT(*) as count
+                        FROM parts
+                        WHERE category IS NOT NULL AND category != ''
+                        GROUP BY category
+                        ORDER BY count DESC
+                    """)
+                    category_breakdown = {}
+                    for row in cursor.fetchall():
+                        category_breakdown[row[0]] = row[1]
+                    
+                    stats['category_breakdown'] = category_breakdown
+                    stats['categories_count'] = len(category_breakdown)
+                    
+                    # Price statistics
+                    cursor = conn.execute("""
+                        SELECT
+                            MIN(authorized_price) as min_price,
+                            MAX(authorized_price) as max_price,
+                            AVG(authorized_price) as avg_price
+                        FROM parts
+                        WHERE is_active = 1
+                    """)
+                    price_row = cursor.fetchone()
+                    if price_row and price_row[0] is not None:
+                        stats['price_statistics'] = {
+                            'min_price': float(price_row[0]),
+                            'max_price': float(price_row[1]),
+                            'avg_price': round(float(price_row[2]), 2)
+                        }
+                else:
+                    stats['categories_count'] = 1 if stats['total_parts'] > 0 else 0
+                
+                return stats
+                
+        except Exception as e:
+            logger.error(f"Failed to get parts statistics: {e}")
+            raise DatabaseError(f"Failed to get parts statistics: {e}")
+
+    def run_maintenance(self, vacuum: bool = True, cleanup_logs: bool = True,
+                       verify_integrity: bool = True, auto_backup: bool = False,
+                       backup_dir: str = None) -> Dict[str, Any]:
+        """
+        Run database maintenance operations.
+        
+        Args:
+            vacuum: Whether to vacuum the database
+            cleanup_logs: Whether to cleanup old discovery logs
+            verify_integrity: Whether to verify database integrity
+            auto_backup: Whether to create a backup before maintenance
+            backup_dir: Directory for backup files
+            
+        Returns:
+            Dict[str, Any]: Results of maintenance operations
+        """
+        results = {
+            'success': True,
+            'operations_performed': [],
+            'vacuum_performed': False,
+            'integrity_check_passed': True,
+            'integrity_issues': [],
+            'logs_cleaned': 0,
+            'backup_created': False
+        }
+        
+        try:
+            # Create backup if requested
+            if auto_backup:
+                if backup_dir:
+                    backup_path = Path(backup_dir) / f"pre_maintenance_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
+                    backup_result = self.create_backup(str(backup_path))
+                    results['backup_created'] = True
+                    results['backup_path'] = backup_result
+                    results['operations_performed'].append('backup')
+            
+            # Vacuum database
+            if vacuum:
+                self.vacuum_database()
+                results['vacuum_performed'] = True
+                results['operations_performed'].append('vacuum')
+            
+            # Cleanup old logs
+            if cleanup_logs:
+                retention_days = int(self.get_config_value('log_retention_days', 365))
+                cleaned_count = self.cleanup_old_discovery_logs(retention_days)
+                results['logs_cleaned'] = cleaned_count
+                results['operations_performed'].append('cleanup_logs')
+            
+            # Verify integrity
+            if verify_integrity:
+                try:
+                    with self.get_connection() as conn:
+                        cursor = conn.execute("PRAGMA integrity_check")
+                        integrity_result = cursor.fetchone()[0]
+                        if integrity_result != 'ok':
+                            results['integrity_check_passed'] = False
+                            results['integrity_issues'].append(integrity_result)
+                        results['operations_performed'].append('integrity_check')
+                except Exception as e:
+                    results['integrity_check_passed'] = False
+                    results['integrity_issues'].append(f"Integrity check failed: {e}")
+            
+            logger.info(f"Maintenance completed: {results['operations_performed']}")
+            return results
+            
+        except Exception as e:
+            logger.error(f"Maintenance operation failed: {e}")
+            results['success'] = False
+            results['error'] = str(e)
+            return results
+    
+    def list_discovery_logs(self, limit: Optional[int] = None) -> List[PartDiscoveryLog]:
+        """
+        List discovery log entries.
+        
+        Args:
+            limit: Maximum number of entries to return
+            
+        Returns:
+            List[PartDiscoveryLog]: List of discovery log entries
+        """
+        return self.get_discovery_logs(limit=limit)
+
     def close(self) -> None:
         """
         Close the database manager and perform any necessary cleanup.
@@ -1166,3 +1627,140 @@ class DatabaseManager:
         # This method is here for compatibility and future extensibility
         logger.debug("DatabaseManager close() called - no persistent connections to close")
         pass
+    
+    def import_parts_with_error_handling(self, csv_file_path: str, update_existing: bool = False) -> Dict[str, Any]:
+        """
+        Import parts from a CSV file with comprehensive error handling.
+        
+        This method wraps the standard import_parts_from_csv method with additional
+        error handling to provide detailed error information for e2e testing.
+        
+        Args:
+            csv_file_path: Path to the CSV file
+            update_existing: If True, update existing parts; if False, skip duplicates
+            
+        Returns:
+            Dict containing import results and error information
+        """
+        result = {
+            'success': False,
+            'errors': [],
+            'valid_rows_processed': 0,
+            'invalid_rows_skipped': 0,
+            'total_rows': 0,
+            'processing_time': 0
+        }
+        
+        import time
+        import csv as csv_module
+        from pathlib import Path
+        from decimal import InvalidOperation
+        
+        start_time = time.time()
+        
+        try:
+            csv_path = Path(csv_file_path)
+            if not csv_path.exists():
+                result['errors'].append(f"CSV file not found: {csv_file_path}")
+                return result
+            
+            # Count total rows first
+            try:
+                with open(csv_path, 'r', encoding='utf-8') as csvfile:
+                    reader = csv_module.DictReader(csvfile)
+                    result['total_rows'] = sum(1 for _ in reader)
+            except Exception as e:
+                result['errors'].append(f"Failed to read CSV file: {e}")
+                return result
+            
+            # Process the CSV with error handling
+            try:
+                with open(csv_path, 'r', encoding='utf-8') as csvfile:
+                    reader = csv_module.DictReader(csvfile)
+                    
+                    for row_num, row in enumerate(reader, 1):
+                        try:
+                            # Validate required fields
+                            if 'part_number' not in row or not row['part_number']:
+                                result['errors'].append(f"Row {row_num}: Missing part_number")
+                                result['invalid_rows_skipped'] += 1
+                                continue
+                            
+                            if 'authorized_price' not in row or not row['authorized_price']:
+                                result['errors'].append(f"Row {row_num}: Missing authorized_price")
+                                result['invalid_rows_skipped'] += 1
+                                continue
+                            
+                            # Try to parse price
+                            try:
+                                price = Decimal(str(row['authorized_price']))
+                                if price <= 0:
+                                    result['errors'].append(f"Row {row_num}: Invalid price (must be positive)")
+                                    result['invalid_rows_skipped'] += 1
+                                    continue
+                            except (ValueError, InvalidOperation):
+                                result['errors'].append(f"Row {row_num}: Invalid price format")
+                                result['invalid_rows_skipped'] += 1
+                                continue
+                            
+                            # Create Part from CSV row
+                            part = Part(
+                                part_number=row['part_number'],
+                                authorized_price=price,
+                                description=row.get('description', ''),
+                                category=row.get('category', ''),
+                                source=row.get('source', 'imported'),
+                                first_seen_invoice=row.get('first_seen_invoice', ''),
+                                notes=row.get('notes', '')
+                            )
+                            
+                            # Handle is_active field
+                            if 'is_active' in row:
+                                part.is_active = str(row['is_active']).lower() in ('true', '1', 'yes')
+                            
+                            try:
+                                # Try to create new part
+                                self.create_part(part)
+                                result['valid_rows_processed'] += 1
+                                logger.debug(f"Imported part: {part.part_number}")
+                            except DatabaseError as e:
+                                if "already exists" in str(e) and update_existing:
+                                    # Update existing part
+                                    try:
+                                        self.update_part(part)
+                                        result['valid_rows_processed'] += 1
+                                        logger.debug(f"Updated existing part: {part.part_number}")
+                                    except Exception as update_error:
+                                        result['errors'].append(f"Row {row_num}: Failed to update {part.part_number}: {update_error}")
+                                        result['invalid_rows_skipped'] += 1
+                                else:
+                                    result['errors'].append(f"Row {row_num}: {e}")
+                                    result['invalid_rows_skipped'] += 1
+                                    
+                        except Exception as e:
+                            result['errors'].append(f"Row {row_num}: Unexpected error: {e}")
+                            result['invalid_rows_skipped'] += 1
+                            continue
+                
+                # Determine success based on results
+                if result['valid_rows_processed'] > 0:
+                    result['success'] = True
+                elif result['total_rows'] == 0:
+                    result['success'] = True  # Empty file is technically successful
+                    result['errors'].append("CSV file is empty")
+                
+                result['processing_time'] = time.time() - start_time
+                
+                logger.info(f"CSV import completed: {result['valid_rows_processed']} processed, {result['invalid_rows_skipped']} skipped")
+                return result
+                
+            except Exception as e:
+                result['errors'].append(f"Failed to process CSV content: {e}")
+                result['processing_time'] = time.time() - start_time
+                return result
+                
+        except Exception as e:
+            result['errors'].append(f"Import operation failed: {e}")
+            result['processing_time'] = time.time() - start_time
+            logger.error(f"Failed to import CSV file {csv_file_path}: {e}")
+            return result

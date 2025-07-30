@@ -115,8 +115,10 @@ class TestPartsOperations(unittest.TestCase):
     
     def test_create_part_duplicate_error(self):
         """Test creating duplicate part raises error."""
+        # Use a unique part number for this test
+        unique_part_number = f"TESTDUP_{uuid.uuid4().hex[:8]}"
         part = Part(
-            part_number="TEST001",
+            part_number=unique_part_number,
             authorized_price=Decimal("10.5000")
         )
         
@@ -124,7 +126,7 @@ class TestPartsOperations(unittest.TestCase):
         self.db_manager.create_part(part)
         
         # Try to create duplicate
-        with self.assertRaises(ValidationError) as context:
+        with self.assertRaises(DatabaseError) as context:
             self.db_manager.create_part(part)
         
         self.assertIn("already exists", str(context.exception))

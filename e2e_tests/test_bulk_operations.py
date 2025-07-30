@@ -364,7 +364,7 @@ class TestBulkOperations(unittest.TestCase):
         for i in range(10):
             part = Part(
                 part_number=f"BATCH{i:03d}",
-                authorized_price=Decimal(f"{i * 5}.00"),
+                authorized_price=Decimal(f"{10 + (i * 5)}.00"),  # Ensure positive price
                 description=f"Batch Test Part {i}",
                 category="Batch"
             )

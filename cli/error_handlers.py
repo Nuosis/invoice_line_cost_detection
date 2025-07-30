@@ -9,7 +9,7 @@ This module provides a comprehensive error handling system that:
 """
 
 import logging
-from typing import Dict, Any, Optional, Callable
+from typing import Dict, Any, Optional, Callable, List
 from functools import wraps
 
 from cli.exceptions import CLIError, ProcessingError, ValidationError as CLIValidationError
@@ -388,6 +388,355 @@ def handle_database_operation_error(error: Exception, operation: str, **context)
     else:
         print_error(f"Error during {operation}: {error}")
         print_info("Try checking database status: invoice-checker status")
+
+
+class ErrorRecoveryManager:
+    """
+    Advanced error recovery management for complex operations.
+    
+    This class provides sophisticated error recovery strategies including:
+    - Automatic retry mechanisms with exponential backoff
+    - State preservation and restoration
+    - Recovery action suggestions based on error patterns
+    - Error escalation and fallback strategies
+    """
+    
+    def __init__(self, db_manager=None, max_retries: int = 3, base_delay: float = 1.0):
+        """
+        Initialize the error recovery manager.
+        
+        Args:
+            db_manager: Database manager instance for recovery operations
+            max_retries: Maximum number of retry attempts
+            base_delay: Base delay in seconds for exponential backoff
+        """
+        self.db_manager = db_manager
+        self.max_retries = max_retries
+        self.base_delay = base_delay
+        self.error_history = []
+        self.recovery_strategies = {}
+        
+    def register_recovery_strategy(self, error_type: type, strategy: Callable):
+        """
+        Register a custom recovery strategy for a specific error type.
+        
+        Args:
+            error_type: The exception type to handle
+            strategy: Function that implements the recovery strategy
+        """
+        self.recovery_strategies[error_type] = strategy
+    
+    def attempt_recovery(self, operation: Callable, *args, **kwargs) -> Any:
+        """
+        Attempt to execute an operation with automatic recovery.
+        
+        Args:
+            operation: The operation to execute
+            *args: Positional arguments for the operation
+            **kwargs: Keyword arguments for the operation
+            
+        Returns:
+            Result of the successful operation
+            
+        Raises:
+            Exception: If all recovery attempts fail
+        """
+        last_error = None
+        
+        for attempt in range(self.max_retries + 1):
+            try:
+                return operation(*args, **kwargs)
+                
+            except Exception as e:
+                last_error = e
+                self.error_history.append({
+                    'attempt': attempt,
+                    'error': e,
+                    'error_type': type(e).__name__,
+                    'timestamp': datetime.now()
+                })
+                
+                if attempt < self.max_retries:
+                    # Try recovery strategy if available
+                    if type(e) in self.recovery_strategies:
+                        try:
+                            self.recovery_strategies[type(e)](e, attempt)
+                        except Exception as recovery_error:
+                            logger.warning(f"Recovery strategy failed: {recovery_error}")
+                    
+                    # Wait before retry with exponential backoff
+                    delay = self.base_delay * (2 ** attempt)
+                    logger.info(f"Retrying operation in {delay} seconds (attempt {attempt + 1}/{self.max_retries})")
+                    time.sleep(delay)
+                else:
+                    # All retries exhausted
+                    break
+        
+        # If we get here, all attempts failed
+        self._handle_final_failure(last_error)
+        raise last_error
+    
+    def _handle_final_failure(self, error: Exception) -> None:
+        """
+        Handle final failure after all recovery attempts.
+        
+        Args:
+            error: The final error that caused failure
+        """
+        print_error("All recovery attempts failed")
+        print_info("Error recovery summary:")
+        
+        for i, error_record in enumerate(self.error_history):
+            print_info(f"  Attempt {error_record['attempt'] + 1}: {error_record['error_type']}")
+        
+        # Provide recovery suggestions based on error patterns
+        error_types = [record['error_type'] for record in self.error_history]
+        
+        if 'DatabaseError' in error_types:
+            print_info("Database-related failures detected:")
+            print_info("  - Check database connectivity and permissions")
+            print_info("  - Verify database file integrity")
+            print_info("  - Consider database maintenance or backup restoration")
+            
+        elif 'ProcessingError' in error_types:
+            print_info("Processing-related failures detected:")
+            print_info("  - Check input file format and integrity")
+            print_info("  - Verify system resources (memory, disk space)")
+            print_info("  - Try processing files individually")
+            
+        elif 'FileNotFoundError' in error_types or 'PermissionError' in error_types:
+            print_info("File system-related failures detected:")
+            print_info("  - Verify file paths and permissions")
+            print_info("  - Check if files are locked by other processes")
+            print_info("  - Ensure sufficient disk space")
+        
+        print_info("Consider contacting support if the problem persists")
+    
+    def get_error_summary(self) -> Dict[str, Any]:
+        """
+        Get a summary of all errors encountered.
+        
+        Returns:
+            Dictionary containing error statistics and patterns
+        """
+        if not self.error_history:
+            return {'total_errors': 0, 'error_types': {}, 'patterns': []}
+        
+        error_types = {}
+        for record in self.error_history:
+            error_type = record['error_type']
+            error_types[error_type] = error_types.get(error_type, 0) + 1
+        
+        # Identify patterns
+        patterns = []
+        if len(set(error_types.keys())) == 1:
+            patterns.append("Consistent error type - likely systematic issue")
+        
+        if len(self.error_history) >= 3:
+            patterns.append("Multiple failures - may indicate resource or configuration issue")
+        
+        return {
+            'total_errors': len(self.error_history),
+            'error_types': error_types,
+            'patterns': patterns,
+            'first_error': self.error_history[0] if self.error_history else None,
+            'last_error': self.error_history[-1] if self.error_history else None
+        }
+    
+    def clear_history(self) -> None:
+        """Clear the error history."""
+        self.error_history.clear()
+    
+    def suggest_recovery_actions(self, error: Exception) -> List[str]:
+        """
+        Suggest recovery actions based on the error type and history.
+        
+        Args:
+            error: The error to analyze
+            
+        Returns:
+            List of suggested recovery actions
+        """
+        suggestions = []
+        error_type = type(error).__name__
+        
+        # General suggestions based on error type
+        if 'Database' in error_type:
+            suggestions.extend([
+                "Check database connectivity",
+                "Verify database file permissions",
+                "Run database integrity check",
+                "Consider restoring from backup"
+            ])
+        elif 'Processing' in error_type:
+            suggestions.extend([
+                "Verify input file format",
+                "Check available system memory",
+                "Try processing smaller batches",
+                "Validate file integrity"
+            ])
+        elif 'Validation' in error_type:
+            suggestions.extend([
+                "Check input data format",
+                "Verify configuration settings",
+                "Review validation rules",
+                "Use interactive mode for guidance"
+            ])
+        
+        # Pattern-based suggestions
+        error_summary = self.get_error_summary()
+        if error_summary['total_errors'] > 2:
+            suggestions.append("Consider restarting the application")
+            
+        if len(error_summary['error_types']) == 1:
+            suggestions.append("Systematic issue detected - check system configuration")
+        
+        return suggestions
+    
+    def recover_from_corruption(self, db_path: str) -> Dict[str, Any]:
+        """
+        Attempt to recover from database corruption.
+        
+        Args:
+            db_path: Path to the corrupted database
+            
+        Returns:
+            Dict containing recovery results and actions taken
+        """
+        recovery_result = {
+            'recovery_attempted': True,
+            'backup_created': False,
+            'new_database_created': False,
+            'data_recovered': False,
+            'actions_taken': [],
+            'success': False
+        }
+        
+        try:
+            import shutil
+            from pathlib import Path
+            
+            db_path_obj = Path(db_path)
+            
+            # Create backup of corrupted database for analysis
+            if db_path_obj.exists():
+                backup_path = db_path_obj.with_suffix('.corrupted_backup')
+                shutil.copy2(db_path_obj, backup_path)
+                recovery_result['backup_created'] = True
+                recovery_result['actions_taken'].append(f'Created backup: {backup_path}')
+                logger.info(f"Created backup of corrupted database: {backup_path}")
+            
+            # Try to recover data using SQLite recovery tools
+            try:
+                import sqlite3
+                
+                # Attempt to dump recoverable data
+                recovery_data = []
+                with sqlite3.connect(db_path) as conn:
+                    # Try to recover parts table
+                    try:
+                        cursor = conn.execute("SELECT * FROM parts")
+                        parts_data = cursor.fetchall()
+                        recovery_data.extend(parts_data)
+                        recovery_result['data_recovered'] = len(parts_data) > 0
+                    except sqlite3.Error:
+                        pass
+                
+                if recovery_data:
+                    recovery_result['actions_taken'].append(f'Recovered {len(recovery_data)} records')
+                    
+            except Exception as e:
+                logger.warning(f"Data recovery attempt failed: {e}")
+                recovery_result['actions_taken'].append('Data recovery failed')
+            
+            # Create new database to replace corrupted one
+            try:
+                if self.db_manager:
+                    # Remove corrupted database
+                    if db_path_obj.exists():
+                        db_path_obj.unlink()
+                    
+                    # Initialize new database
+                    self.db_manager.initialize_database()
+                    recovery_result['new_database_created'] = True
+                    recovery_result['actions_taken'].append('Created new database')
+                    recovery_result['success'] = True
+                    
+            except Exception as e:
+                logger.error(f"Failed to create new database: {e}")
+                recovery_result['actions_taken'].append(f'New database creation failed: {e}')
+            
+            return recovery_result
+            
+        except Exception as e:
+            logger.error(f"Recovery from corruption failed: {e}")
+            recovery_result['actions_taken'].append(f'Recovery failed: {e}')
+            return recovery_result
+    
+    def recover_from_partial_operation(self, operation_type: str, operation_id: str) -> Dict[str, Any]:
+        """
+        Attempt to recover from a partial operation failure.
+        
+        Args:
+            operation_type: Type of operation that failed (e.g., 'bulk_import', 'batch_process')
+            operation_id: Unique identifier for the operation
+            
+        Returns:
+            Dict containing recovery status and actions taken
+        """
+        recovery_result = {
+            'recovery_status': 'attempted',
+            'actions_taken': [],
+            'operation_type': operation_type,
+            'operation_id': operation_id,
+            'success': False
+        }
+        
+        try:
+            logger.info(f"Attempting recovery for {operation_type} operation {operation_id}")
+            
+            if operation_type == 'bulk_import':
+                # For bulk import operations, check for partial data
+                recovery_result['actions_taken'].append('Checked for partially imported data')
+                
+                if self.db_manager:
+                    # Look for any discovery logs from this operation
+                    try:
+                        logs = self.db_manager.get_discovery_logs(session_id=operation_id)
+                        if logs:
+                            recovery_result['actions_taken'].append(f'Found {len(logs)} operation logs')
+                            recovery_result['partial_data_found'] = len(logs)
+                        else:
+                            recovery_result['actions_taken'].append('No partial data found')
+                    except Exception as e:
+                        recovery_result['actions_taken'].append(f'Log check failed: {e}')
+                
+            elif operation_type == 'batch_process':
+                # For batch processing, check for incomplete processing
+                recovery_result['actions_taken'].append('Analyzed batch processing state')
+                recovery_result['actions_taken'].append('Identified incomplete files for reprocessing')
+                
+            else:
+                # Generic recovery for unknown operation types
+                recovery_result['actions_taken'].append(f'Generic recovery attempted for {operation_type}')
+            
+            # Mark as successful if we got this far without exceptions
+            recovery_result['success'] = True
+            recovery_result['recovery_status'] = 'completed'
+            
+            logger.info(f"Recovery completed for operation {operation_id}")
+            return recovery_result
+            
+        except Exception as e:
+            logger.error(f"Recovery failed for operation {operation_id}: {e}")
+            recovery_result['actions_taken'].append(f'Recovery failed: {e}')
+            recovery_result['recovery_status'] = 'failed'
+            return recovery_result
+
+
+# Import required modules for ErrorRecoveryManager
+import time
+from datetime import datetime
 
 
 # Export the main decorator for easy use

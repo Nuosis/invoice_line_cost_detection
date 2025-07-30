@@ -240,7 +240,17 @@ class Configuration:
         elif self.data_type == 'number':
             self.value = str(float(value))
         elif self.data_type == 'boolean':
-            self.value = 'true' if bool(value) else 'false'
+            # Handle string-to-boolean conversion properly
+            if isinstance(value, str):
+                if value.lower() in ('true', '1', 'yes', 'on'):
+                    self.value = 'true'
+                elif value.lower() in ('false', '0', 'no', 'off'):
+                    self.value = 'false'
+                else:
+                    raise ValueError(f"Cannot convert string '{value}' to boolean")
+            else:
+                # For non-string values, use standard boolean conversion
+                self.value = 'true' if bool(value) else 'false'
         elif self.data_type == 'json':
             self.value = json.dumps(value)
         else:

@@ -14,7 +14,7 @@ from datetime import datetime
 
 import pdfplumber
 
-from .models import InvoiceData, LineItem, FormatSection
+from .models import InvoiceData, LineItem, FormatSection, InvoiceLineItem
 from .exceptions import (
     PDFProcessingError,
     PDFReadabilityError,
@@ -59,16 +59,37 @@ class PDFProcessor:
         r'ACCOUNT\s+NUMBER\s+(\d+)'
     ]
     
-    # Line item parsing pattern based on the sample invoice format
+    # Line item parsing patterns based on actual invoice formats
+    # Primary pattern for most line items
     LINE_ITEM_PATTERN = re.compile(
         r'(\d+)\s+'  # Wearer number
-        r'([A-Z\s]+?)\s+'  # Wearer name (non-greedy)
+        r'([A-Z\s\-\.]+?)\s+'  # Wearer name (non-greedy, includes hyphens and periods)
         r'([A-Z0-9]+)\s+'  # Item code
         r'(.+?)\s+'  # Description (non-greedy)
-        r'([A-Z0-9]+)\s+'  # Size
-        r'(Rent|Ruin\s+charge|PREP\s+CHARGE)\s+'  # Type
+        r'([A-Z0-9X]+)\s+'  # Size (includes X for sizes like 1XLR, 2XLL)
+        r'(Rent|Ruin\s+charge|PREP\s+CHARGE|Loss\s+Charge)\s+'  # Type
         r'(\d+)\s+'  # Quantity
-        r'(\d+\.\d{3})\s+'  # Rate
+        r'(\d+\.\d{2,3})\s+'  # Rate (2-3 decimal places)
+        r'(\d+\.\d{2})'  # Total
+    )
+    
+    # Alternative pattern for special charges (NAME EMBL CHARGE, PREP CHARGE, etc.)
+    SPECIAL_CHARGE_PATTERN = re.compile(
+        r'(\d+)\s+'  # Wearer number
+        r'([A-Z\s\-\.]+?)\s+'  # Wearer name
+        r'(NAME\s+EMBL\s+CHARGE|PREP\s+CHARGE)\s+'  # Special charge type
+        r'(\d+)\s+'  # Quantity
+        r'(\d+\.\d{2,3})\s+'  # Rate
+        r'(\d+\.\d{2})'  # Total
+    )
+    
+    # Pattern for non-garment items (mats, towels, etc.)
+    NON_GARMENT_PATTERN = re.compile(
+        r'([A-Z0-9]+)\s+'  # Item code
+        r'(.+?)\s+'  # Description
+        r'(Rent|X)\s+'  # Type
+        r'(\d+)\s+'  # Quantity
+        r'(\d+\.\d{2,3})\s+'  # Rate
         r'(\d+\.\d{2})'  # Total
     )
     
@@ -352,7 +373,7 @@ class PDFProcessor:
     
     def _extract_line_items(self, text: str, invoice_data: InvoiceData) -> None:
         """
-        Extract line items from invoice text.
+        Extract line items from invoice text using multiple patterns.
         
         Args:
             text: Extracted text from PDF
@@ -369,39 +390,13 @@ class PDFProcessor:
             if not line:
                 continue
             
-            # Try to match line item pattern
-            match = self.LINE_ITEM_PATTERN.search(line)
-            if match:
-                try:
-                    wearer_number = match.group(1)
-                    wearer_name = match.group(2).strip()
-                    item_code = match.group(3)
-                    description = match.group(4).strip()
-                    size = match.group(5)
-                    item_type = match.group(6)
-                    quantity = int(match.group(7))
-                    rate = Decimal(match.group(8))
-                    total = Decimal(match.group(9))
-                    
-                    line_item = LineItem(
-                        wearer_number=wearer_number,
-                        wearer_name=wearer_name,
-                        item_code=item_code,
-                        description=description,
-                        size=size,
-                        item_type=item_type,
-                        quantity=quantity,
-                        rate=rate,
-                        total=total,
-                        line_number=line_num,
-                        raw_text=line
-                    )
-                    
-                    line_items.append(line_item)
-                    
-                except (ValueError, InvalidOperation) as e:
-                    self.logger.warning(f"Error parsing line item at line {line_num}: {e}")
-                    continue
+            # Skip header lines and summary lines
+            if self._is_header_or_summary_line(line):
+                continue
+            
+            line_item = self._parse_line_item(line, line_num)
+            if line_item:
+                line_items.append(line_item)
         
         if not line_items:
             raise LineItemParsingError(
@@ -411,6 +406,114 @@ class PDFProcessor:
         
         invoice_data.line_items = line_items
         self.logger.debug(f"Extracted {len(line_items)} line items")
+    
+    def _is_header_or_summary_line(self, line: str) -> bool:
+        """Check if a line is a header or summary line that should be skipped."""
+        line_upper = line.upper()
+        skip_patterns = [
+            'WEARER', 'ITEM', 'DESCRIPTION', 'SIZE', 'TYPE', 'BILL', 'RATE', 'TOTAL',
+            'SUBTOTAL', 'FREIGHT', 'TAX', 'THANK YOU', 'VISIT US', 'BILLING INQUIRIES',
+            'CUSTOMER SERVICE', 'ACCOUNT NUMBER', 'INVOICE NUMBER', 'INVOICE DATE',
+            'PAGE', 'SHIP TO', 'MARKET CENTER', 'ROUTE NUMBER'
+        ]
+        return any(pattern in line_upper for pattern in skip_patterns)
+    
+    def _parse_line_item(self, line: str, line_num: int) -> Optional[LineItem]:
+        """
+        Parse a single line item using multiple patterns.
+        
+        Args:
+            line: Line text to parse
+            line_num: Line number for debugging
+            
+        Returns:
+            LineItem object if parsing successful, None otherwise
+        """
+        # Try primary line item pattern first
+        match = self.LINE_ITEM_PATTERN.search(line)
+        if match:
+            try:
+                wearer_number = match.group(1)
+                wearer_name = match.group(2).strip()
+                item_code = match.group(3)
+                description = match.group(4).strip()
+                size = match.group(5)
+                item_type = match.group(6)
+                quantity = int(match.group(7))
+                rate = Decimal(match.group(8))
+                total = Decimal(match.group(9))
+                
+                return LineItem(
+                    wearer_number=wearer_number,
+                    wearer_name=wearer_name,
+                    item_code=item_code,
+                    description=description,
+                    size=size,
+                    item_type=item_type,
+                    quantity=quantity,
+                    rate=rate,
+                    total=total,
+                    line_number=line_num,
+                    raw_text=line
+                )
+            except (ValueError, InvalidOperation) as e:
+                self.logger.warning(f"Error parsing primary pattern at line {line_num}: {e}")
+        
+        # Try special charge pattern
+        match = self.SPECIAL_CHARGE_PATTERN.search(line)
+        if match:
+            try:
+                wearer_number = match.group(1)
+                wearer_name = match.group(2).strip()
+                charge_type = match.group(3)
+                quantity = int(match.group(4))
+                rate = Decimal(match.group(5))
+                total = Decimal(match.group(6))
+                
+                return LineItem(
+                    wearer_number=wearer_number,
+                    wearer_name=wearer_name,
+                    item_code=charge_type.replace(' ', '_'),  # Convert to code format
+                    description=charge_type,
+                    size="N/A",
+                    item_type="Charge",
+                    quantity=quantity,
+                    rate=rate,
+                    total=total,
+                    line_number=line_num,
+                    raw_text=line
+                )
+            except (ValueError, InvalidOperation) as e:
+                self.logger.warning(f"Error parsing special charge at line {line_num}: {e}")
+        
+        # Try non-garment pattern
+        match = self.NON_GARMENT_PATTERN.search(line)
+        if match:
+            try:
+                item_code = match.group(1)
+                description = match.group(2).strip()
+                item_type = match.group(3)
+                quantity = int(match.group(4))
+                rate = Decimal(match.group(5))
+                total = Decimal(match.group(6))
+                
+                return LineItem(
+                    wearer_number="N/A",
+                    wearer_name="NON-GARMENT",
+                    item_code=item_code,
+                    description=description,
+                    size="N/A",
+                    item_type=item_type,
+                    quantity=quantity,
+                    rate=rate,
+                    total=total,
+                    line_number=line_num,
+                    raw_text=line
+                )
+            except (ValueError, InvalidOperation) as e:
+                self.logger.warning(f"Error parsing non-garment item at line {line_num}: {e}")
+        
+        return None
     
     def _extract_format_sections(self, text: str, invoice_data: InvoiceData) -> None:
         """
@@ -520,3 +623,91 @@ class PDFProcessor:
             )
         
         self.logger.debug(f"Data quality validation passed: {valid_items}/{total_items} valid line items")
+    
+    def extract_line_items(self, pdf_path: str) -> List['InvoiceLineItem']:
+        """
+        Extract line items from a PDF and return them as InvoiceLineItem objects.
+        
+        This method is a convenience wrapper around process_pdf() that returns
+        only the line items in the format expected by the validation engine.
+        
+        Args:
+            pdf_path: Path to the PDF file to process
+            
+        Returns:
+            List of InvoiceLineItem objects
+            
+        Raises:
+            PDFProcessingError: For various processing errors
+        """
+        from .models import InvoiceLineItem
+        
+        # Process the PDF to get full invoice data
+        invoice_data = self.process_pdf(Path(pdf_path))
+        
+        # Convert LineItem objects to InvoiceLineItem objects
+        invoice_line_items = []
+        for line_item in invoice_data.line_items:
+            invoice_line_item = InvoiceLineItem.from_line_item(
+                line_item,
+                invoice_number=invoice_data.invoice_number,
+                invoice_date=invoice_data.invoice_date
+            )
+            invoice_line_items.append(invoice_line_item)
+        
+        return invoice_line_items
+    
+    def process_pdf_with_error_handling(self, pdf_path: str) -> Dict[str, Any]:
+        """
+        Process a PDF with comprehensive error handling and recovery.
+        
+        This method wraps the standard process_pdf method with additional
+        error handling to provide detailed error information for e2e testing.
+        
+        Args:
+            pdf_path: Path to the PDF file to process
+            
+        Returns:
+            Dict containing processing results and error information
+        """
+        result = {
+            'success': False,
+            'error': None,
+            'error_type': None,
+            'invoice_data': None,
+            'line_items_count': 0,
+            'processing_time': 0
+        }
+        
+        import time
+        start_time = time.time()
+        
+        try:
+            # Attempt to process the PDF
+            invoice_data = self.process_pdf(Path(pdf_path))
+            
+            # If successful, populate result
+            result['success'] = True
+            result['invoice_data'] = invoice_data
+            result['line_items_count'] = len(invoice_data.line_items) if invoice_data.line_items else 0
+            result['processing_time'] = time.time() - start_time
+            
+            self.logger.info(f"Successfully processed PDF: {pdf_path}")
+            
+        except PDFProcessingError as e:
+            # Handle PDF-specific processing errors
+            result['error'] = str(e)
+            result['error_type'] = 'PDFProcessingError'
+            result['processing_time'] = time.time() - start_time
+            
+            self.logger.error(f"PDF processing error for {pdf_path}: {e}")
+            
+        except Exception as e:
+            # Handle any other unexpected errors
+            result['error'] = str(e)
+            result['error_type'] = type(e).__name__
+            result['processing_time'] = time.time() - start_time
+            
+            self.logger.error(f"Unexpected error processing PDF {pdf_path}: {e}")
+        
+        return result

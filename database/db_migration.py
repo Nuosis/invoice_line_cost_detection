@@ -21,14 +21,21 @@ class DatabaseMigration:
     Handles database schema migrations and updates.
     """
     
-    def __init__(self, db_path: str = "invoice_detection.db"):
+    def __init__(self, db_path_or_manager = "invoice_detection.db"):
         """
         Initialize the migration manager.
         
         Args:
-            db_path: Path to the SQLite database file
+            db_path_or_manager: Path to the SQLite database file or DatabaseManager instance
         """
-        self.db_path = Path(db_path)
+        if hasattr(db_path_or_manager, 'db_path'):
+            # It's a DatabaseManager instance
+            self.db_path = Path(db_path_or_manager.db_path)
+            self.db_manager = db_path_or_manager
+        else:
+            # It's a string path
+            self.db_path = Path(db_path_or_manager)
+            self.db_manager = None
         self.migrations = self._get_migrations()
     
     def _get_migrations(self) -> Dict[str, str]:
@@ -392,3 +399,7 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
+# Alias for backwards compatibility with tests
+DatabaseMigrator = DatabaseMigration

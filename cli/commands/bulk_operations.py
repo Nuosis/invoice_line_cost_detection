@@ -32,6 +32,293 @@ from database.models import Part, PartNotFoundError, DatabaseError
 logger = logging.getLogger(__name__)
 
 
+class BulkOperationsManager:
+    """
+    Manager class for bulk operations on parts.
+    
+    This class provides a programmatic interface for bulk operations
+    that can be used by tests and other modules without going through
+    the CLI command interface.
+    """
+    
+    def __init__(self, db_manager):
+        """
+        Initialize the bulk operations manager.
+        
+        Args:
+            db_manager: Database manager instance
+        """
+        self.db_manager = db_manager
+        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+    
+    def bulk_update_parts(self, csv_file_path: str, fields: List[str],
+                         filter_category: Optional[str] = None,
+                         batch_size: int = 50, dry_run: bool = False) -> Dict[str, Any]:
+        """
+        Perform bulk update of parts from CSV file.
+        
+        Args:
+            csv_file_path: Path to CSV file containing update data
+            fields: List of fields to update
+            filter_category: Optional category filter
+            batch_size: Batch size for processing
+            dry_run: If True, preview changes without applying them
+            
+        Returns:
+            Dictionary containing operation results
+        """
+        try:
+            # Check if file exists first
+            csv_path = Path(csv_file_path)
+            if not csv_path.exists():
+                raise DatabaseError(f"CSV file not found: {csv_file_path}")
+            
+            # Read update data from CSV
+            update_data = _read_bulk_update_csv(csv_path, fields)
+            
+            if not update_data:
+                return {
+                    'success': False,
+                    'error': 'No valid update data found in CSV file',
+                    'updated_count': 0,
+                    'failed_count': 0
+                }
+            
+            if dry_run:
+                # Preview mode - show what would be updated
+                preview_changes = []
+                for update_item in update_data:
+                    try:
+                        part_number = update_item['part_number']
+                        current_part = self.db_manager.get_part(part_number)
+                        
+                        # Apply category filter if specified
+                        if filter_category and current_part.category != filter_category:
+                            continue
+                        
+                        change_info = {
+                            'part_number': part_number,
+                            'current_price': current_part.authorized_price,
+                            'current_description': current_part.description,
+                            'current_category': current_part.category
+                        }
+                        
+                        # Add new values
+                        if 'authorized_price' in update_item:
+                            change_info['new_price'] = update_item['authorized_price']
+                        if 'description' in update_item:
+                            change_info['new_description'] = update_item['description']
+                        if 'category' in update_item:
+                            change_info['new_category'] = update_item['category']
+                        
+                        preview_changes.append(change_info)
+                        
+                    except Exception:
+                        continue  # Skip parts that can't be found
+                
+                return {
+                    'success': True,
+                    'dry_run': True,
+                    'would_update_count': len(preview_changes),
+                    'preview_changes': preview_changes
+                }
+            
+            # Perform actual update
+            results = _perform_bulk_update(
+                update_data, self.db_manager, fields, filter_category, batch_size
+            )
+            
+            return {
+                'success': True,
+                'updated_count': results['updated'],
+                'failed_count': results['errors'] + results['not_found'],
+                'skipped_count': results['filtered_out'],
+                'batches_processed': (len(update_data) + batch_size - 1) // batch_size,
+                'total_parts': results['total_parts'],
+                'errors': results.get('error_details', [])
+            }
+            
+        except DatabaseError:
+            # Re-raise DatabaseError for proper error handling in tests
+            raise
+        except Exception as e:
+            self.logger.error(f"Bulk update failed: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'updated_count': 0,
+                'failed_count': 0
+            }
+    
+    def bulk_delete_parts(self, csv_file_path: str, soft_delete: bool = True,
+                         filter_category: Optional[str] = None,
+                         batch_size: int = 50, dry_run: bool = False,
+                         force: bool = False) -> Dict[str, Any]:
+        """
+        Perform bulk deletion of parts from CSV file.
+        
+        Args:
+            csv_file_path: Path to CSV file containing part numbers to delete
+            soft_delete: If True, soft delete (deactivate), otherwise hard delete
+            filter_category: Optional category filter
+            batch_size: Batch size for processing
+            dry_run: If True, preview deletions without applying them
+            force: If True, skip confirmation prompts
+            
+        Returns:
+            Dictionary containing operation results
+        """
+        try:
+            # Read part numbers from CSV
+            part_numbers = _read_part_numbers_csv(Path(csv_file_path))
+            
+            if not part_numbers:
+                return {
+                    'success': False,
+                    'error': 'No valid part numbers found in CSV file',
+                    'deleted_count': 0,
+                    'failed_count': 0
+                }
+            
+            if dry_run:
+                # Preview mode - show what would be deleted
+                preview_deletions = []
+                for part_number in part_numbers:
+                    try:
+                        part = self.db_manager.get_part(part_number)
+                        
+                        # Apply category filter if specified
+                        if filter_category and part.category != filter_category:
+                            continue
+                        
+                        deletion_info = {
+                            'part_number': part_number,
+                            'description': part.description,
+                            'category': part.category,
+                            'current_status': 'active' if part.is_active else 'inactive',
+                            'deletion_type': 'soft' if soft_delete else 'hard'
+                        }
+                        preview_deletions.append(deletion_info)
+                        
+                    except Exception:
+                        continue  # Skip parts that can't be found
+                
+                return {
+                    'success': True,
+                    'dry_run': True,
+                    'would_delete_count': len(preview_deletions),
+                    'preview_deletions': preview_deletions
+                }
+            
+            # Perform actual deletion
+            results = _perform_bulk_delete(
+                part_numbers, self.db_manager, soft_delete, filter_category, batch_size
+            )
+            
+            return {
+                'success': True,
+                'deleted_count': results['deleted'],
+                'failed_count': results['errors'],
+                'skipped_count': results['filtered_out'] + results['not_found'],
+                'forced': force,
+                'total_parts': results['total_parts']
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Bulk delete failed: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'deleted_count': 0,
+                'failed_count': 0
+            }
+    
+    def bulk_activate_parts(self, csv_file_path: str,
+                           filter_category: Optional[str] = None,
+                           batch_size: int = 50, dry_run: bool = False) -> Dict[str, Any]:
+        """
+        Perform bulk activation of parts from CSV file.
+        
+        Args:
+            csv_file_path: Path to CSV file containing part numbers to activate
+            filter_category: Optional category filter
+            batch_size: Batch size for processing
+            dry_run: If True, preview activations without applying them
+            
+        Returns:
+            Dictionary containing operation results
+        """
+        try:
+            # Read part numbers from CSV
+            part_numbers = _read_part_numbers_csv(Path(csv_file_path))
+            
+            if not part_numbers:
+                return {
+                    'success': False,
+                    'error': 'No valid part numbers found in CSV file',
+                    'activated_count': 0,
+                    'failed_count': 0
+                }
+            
+            if dry_run:
+                # Preview mode - show what would be activated
+                preview_activations = []
+                for part_number in part_numbers:
+                    try:
+                        part = self.db_manager.get_part(part_number)
+                        
+                        # Apply category filter if specified
+                        if filter_category and part.category != filter_category:
+                            continue
+                        
+                        # Only include inactive parts
+                        if not part.is_active:
+                            activation_info = {
+                                'part_number': part_number,
+                                'description': part.description,
+                                'category': part.category,
+                                'current_status': 'inactive'
+                            }
+                            preview_activations.append(activation_info)
+                        
+                    except Exception:
+                        continue  # Skip parts that can't be found
+                
+                return {
+                    'success': True,
+                    'dry_run': True,
+                    'would_activate_count': len(preview_activations),
+                    'preview_activations': preview_activations
+                }
+            
+            # Perform actual activation
+            results = _perform_bulk_activate(
+                part_numbers, self.db_manager, filter_category, batch_size
+            )
+            
+            return {
+                'success': True,
+                'activated_count': results['activated'],
+                'failed_count': results['errors'],
+                'skipped_count': results['filtered_out'] + results['not_found'] + results['already_active'],
+                'total_parts': results['total_parts']
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Bulk activate failed: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'activated_count': 0,
+                'failed_count': 0
+            }
+    
+    def close(self):
+        """Close the bulk operations manager and clean up resources."""
+        # No specific cleanup needed for this manager
+        pass
+
+
 def _load_column_mapping(mapping_file: Path) -> Dict[str, str]:
     """
     Load column mapping from CSV file.

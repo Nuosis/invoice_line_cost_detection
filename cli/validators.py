@@ -426,6 +426,198 @@ class OutputFormatType(click.ParamType):
             self.fail(str(e), param, ctx)
 
 
+class PathValidator:
+    """
+    Path validation class for cross-platform file and directory validation.
+    
+    This class provides methods for validating file paths, directory paths,
+    and ensuring cross-platform compatibility.
+    """
+    
+    def __init__(self, must_exist: bool = True, must_be_file: bool = True,
+                 allowed_extensions: Optional[List[str]] = None):
+        """
+        Initialize the path validator.
+        
+        Args:
+            must_exist: Whether the path must exist
+            must_be_file: Whether the path must be a file (not directory)
+            allowed_extensions: List of allowed file extensions
+        """
+        self.must_exist = must_exist
+        self.must_be_file = must_be_file
+        self.allowed_extensions = allowed_extensions or []
+    
+    def validate_path(self, path: Union[str, Path]) -> Path:
+        """
+        Validate a file or directory path.
+        
+        Args:
+            path: Path to validate
+            
+        Returns:
+            Validated Path object
+            
+        Raises:
+            ValidationError: If path is invalid
+        """
+        if self.must_be_file:
+            return validate_file_path(
+                path,
+                must_exist=self.must_exist,
+                must_be_file=True,
+                extensions=self.allowed_extensions
+            )
+        else:
+            return validate_directory_path(
+                path,
+                must_exist=self.must_exist
+            )
+    
+    def validate_input_path(self, path: Union[str, Path]) -> Path:
+        """
+        Validate an input path (must exist).
+        
+        Args:
+            path: Input path to validate
+            
+        Returns:
+            Validated Path object
+            
+        Raises:
+            ValidationError: If path is invalid
+        """
+        return validate_file_path(
+            path,
+            must_exist=True,
+            must_be_file=self.must_be_file,
+            extensions=self.allowed_extensions
+        )
+    
+    def validate_output_path(self, path: Union[str, Path]) -> Path:
+        """
+        Validate an output path (doesn't need to exist).
+        
+        Args:
+            path: Output path to validate
+            
+        Returns:
+            Validated Path object
+            
+        Raises:
+            ValidationError: If path is invalid
+        """
+        if not path:
+            raise ValidationError("Output path cannot be empty")
+        
+        path_obj = Path(path).resolve()
+        
+        # Check if parent directory exists or can be created
+        parent_dir = path_obj.parent
+        if not parent_dir.exists():
+            try:
+                parent_dir.mkdir(parents=True, exist_ok=True)
+            except OSError as e:
+                raise ValidationError(f"Cannot create output directory {parent_dir}: {e}")
+        
+        # Validate file extension if specified
+        if self.allowed_extensions:
+            normalized_extensions = [
+                ext.lower() if ext.startswith('.') else f'.{ext.lower()}'
+                for ext in self.allowed_extensions
+            ]
+            
+            if path_obj.suffix.lower() not in normalized_extensions:
+                raise ValidationError(
+                    f"Output file must have one of these extensions: {', '.join(normalized_extensions)}"
+                )
+        
+        return path_obj
+    
+    def validate_cross_platform_path(self, path: Union[str, Path]) -> Path:
+        """
+        Validate a path for cross-platform compatibility.
+        
+        Args:
+            path: Path to validate
+            
+        Returns:
+            Validated Path object
+            
+        Raises:
+            ValidationError: If path has cross-platform issues
+        """
+        if not path:
+            raise ValidationError("Path cannot be empty")
+        
+        path_str = str(path)
+        path_obj = Path(path).resolve()
+        
+        # Check for invalid characters in path components
+        invalid_chars = ['<', '>', ':', '"', '|', '?', '*']
+        for char in invalid_chars:
+            if char in path_str:
+                raise ValidationError(f"Path contains invalid character '{char}': {path}")
+        
+        # Check for reserved names on Windows
+        reserved_names = [
+            'CON', 'PRN', 'AUX', 'NUL',
+            'COM1', 'COM2', 'COM3', 'COM4', 'COM5', 'COM6', 'COM7', 'COM8', 'COM9',
+            'LPT1', 'LPT2', 'LPT3', 'LPT4', 'LPT5', 'LPT6', 'LPT7', 'LPT8', 'LPT9'
+        ]
+        
+        for part in path_obj.parts:
+            part_name = part.split('.')[0].upper()  # Remove extension for check
+            if part_name in reserved_names:
+                raise ValidationError(f"Path contains reserved name '{part}': {path}")
+        
+        # Check path length (Windows has 260 character limit)
+        if len(str(path_obj)) > 250:  # Leave some buffer
+            raise ValidationError(f"Path is too long (max 250 characters): {path}")
+        
+        return path_obj
+    
+    def is_safe_filename(self, filename: str) -> bool:
+        """
+        Check if a filename is safe for cross-platform use.
+        
+        Args:
+            filename: Filename to check
+            
+        Returns:
+            True if filename is safe, False otherwise
+        """
+        try:
+            # Check for invalid characters
+            invalid_chars = ['<', '>', ':', '"', '/', '\\', '|', '?', '*']
+            if any(char in filename for char in invalid_chars):
+                return False
+            
+            # Check for reserved names
+            reserved_names = [
+                'CON', 'PRN', 'AUX', 'NUL',
+                'COM1', 'COM2', 'COM3', 'COM4', 'COM5', 'COM6', 'COM7', 'COM8', 'COM9',
+                'LPT1', 'LPT2', 'LPT3', 'LPT4', 'LPT5', 'LPT6', 'LPT7', 'LPT8', 'LPT9'
+            ]
+            
+            name_without_ext = filename.split('.')[0].upper()
+            if name_without_ext in reserved_names:
+                return False
+            
+            # Check length
+            if len(filename) > 255:
+                return False
+            
+            # Check for leading/trailing spaces or dots
+            if filename.startswith((' ', '.')) or filename.endswith((' ', '.')):
+                return False
+            
+            return True
+            
+        except Exception:
+            return False
+
+
 # Create instances for use in Click commands
 PART_NUMBER = PartNumberType()
 PRICE = PriceType()

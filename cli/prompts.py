@@ -638,3 +638,106 @@ def prompt_for_next_action(unknown_parts: int = 0) -> str:
         return prompt_for_choice("What would you like to do next?", actions, default="Exit")
     except UserCancelledError:
         return "Exit"
+
+
+class InteractivePrompts:
+    """
+    Interactive prompt handler for various CLI workflows.
+    
+    This class provides a unified interface for interactive prompts
+    used in testing and CLI operations.
+    """
+    
+    def __init__(self):
+        """Initialize the interactive prompts handler."""
+        self.part_discovery = PartDiscoveryPrompt()
+        self.session_data = {}
+    
+    def prompt_for_part_details(self, part_number: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Prompt user for part details when adding a new part.
+        
+        Args:
+            part_number: Pre-filled part number (optional)
+            
+        Returns:
+            Dictionary containing part details
+        """
+        return prompt_for_part_details(part_number)
+    
+    def prompt_for_confirmation(self, message: str, default: bool = False,
+                               show_details: Optional[Dict[str, Any]] = None) -> bool:
+        """
+        Prompt user for confirmation with optional details display.
+        
+        Args:
+            message: Confirmation message
+            default: Default response
+            show_details: Optional details to display before confirmation
+            
+        Returns:
+            True if user confirms, False otherwise
+        """
+        return prompt_for_confirmation(message, default, show_details)
+    
+    def prompt_for_choice(self, message: str, choices: List[str],
+                         default: Optional[str] = None) -> str:
+        """
+        Prompt user to select from a list of choices.
+        
+        Args:
+            message: Prompt message
+            choices: List of available choices
+            default: Default choice (optional)
+            
+        Returns:
+            Selected choice
+        """
+        return prompt_for_choice(message, choices, default)
+    
+    def prompt_for_unknown_part(self, part_number: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        Prompt user for action when an unknown part is discovered.
+        
+        Args:
+            part_number: The unknown part number
+            context: Additional context about the part discovery
+            
+        Returns:
+            Dictionary containing user decision and any additional data
+        """
+        return self.part_discovery.prompt_for_unknown_part(part_number, context)
+    
+    def prompt_for_batch_review(self, unknown_parts: List[str]) -> Dict[str, Any]:
+        """
+        Prompt user to review all unknown parts at once.
+        
+        Args:
+            unknown_parts: List of unknown part numbers
+            
+        Returns:
+            Dictionary containing batch review decisions
+        """
+        return self.part_discovery.prompt_for_batch_review(unknown_parts)
+    
+    def get_discovery_summary(self) -> Dict[str, Any]:
+        """
+        Get summary of all part discovery decisions.
+        
+        Returns:
+            Summary dictionary with statistics and decisions
+        """
+        return self.part_discovery.get_discovery_summary()
+    
+    def show_welcome_message(self):
+        """Display welcome message for interactive mode."""
+        show_welcome_message()
+    
+    def show_processing_summary(self, stats: Dict[str, Any]):
+        """
+        Display processing summary after completion.
+        
+        Args:
+            stats: Dictionary containing processing statistics
+        """
+        show_processing_summary(stats)

@@ -96,6 +96,7 @@ invoice-rate-detection = { workspace = true }
 [dependency-groups]
 dev = [
     "invoice-rate-detection",
+    "psutil>=7.0.0",
     "pytest>=8.3.5",
     "pytest-cov>=5.0.0",
     "pytest-mock>=3.14.1",

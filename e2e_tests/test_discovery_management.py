@@ -324,7 +324,7 @@ class TestDiscoveryManagement(unittest.TestCase):
                     authorized_price=unknown_part.discovered_price,
                     description=unknown_part.description or f"Added from discovery",
                     category="discovered",
-                    source="discovery",
+                    source="discovered",
                     first_seen_invoice=unknown_part.invoice_number
                 )
                 
@@ -347,7 +347,7 @@ class TestDiscoveryManagement(unittest.TestCase):
         # Verify part was added
         added_part = self.db_manager.get_part("DISCOVERED001")
         self.assertEqual(added_part.part_number, "DISCOVERED001")
-        self.assertEqual(added_part.source, "discovery")
+        self.assertEqual(added_part.source, "discovered")
     
     def test_discovery_stats_overall_statistics(self):
         """
@@ -373,7 +373,7 @@ class TestDiscoveryManagement(unittest.TestCase):
         
         # Verify statistics values
         self.assertEqual(stats['total_sessions'], 3)
-        self.assertEqual(stats['total_parts_discovered'], 4)  # 4 discovery log entries
+        self.assertEqual(stats['total_parts_discovered'], 3)  # 3 "discovered" actions
         self.assertEqual(stats['total_parts_added'], 1)  # 1 "added" action
         
         # Verify discovery rate calculation

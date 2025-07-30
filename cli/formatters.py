@@ -392,3 +392,172 @@ def format_warning(message: str) -> str:
 def format_info(message: str) -> str:
     """Format an info message and return it as a string."""
     return click.style(f"ℹ {message}", fg='blue')
+
+
+class ReportFormatter:
+    """
+    Report formatting class for generating various output formats.
+    
+    This class provides methods for formatting validation results, parts data,
+    and other report information in different output formats (CSV, JSON, table).
+    """
+    
+    def __init__(self, output_format: str = 'csv'):
+        """
+        Initialize the report formatter.
+        
+        Args:
+            output_format: Default output format ('csv', 'json', 'table')
+        """
+        self.output_format = output_format.lower()
+        self.supported_formats = ['csv', 'json', 'table', 'txt']
+    
+    def format_validation_results(self, results: List[Dict[str, Any]],
+                                 output_format: Optional[str] = None) -> str:
+        """
+        Format validation results for output.
+        
+        Args:
+            results: List of validation result dictionaries
+            output_format: Override default output format
+            
+        Returns:
+            Formatted results string
+        """
+        format_type = output_format or self.output_format
+        
+        if format_type == 'json':
+            return format_json(results)
+        elif format_type == 'table':
+            return format_table(results)
+        elif format_type in ['csv', 'txt']:
+            return self._format_csv_string(results)
+        else:
+            raise ValueError(f"Unsupported format: {format_type}")
+    
+    def format_parts_list(self, parts: List[Dict[str, Any]],
+                         output_format: Optional[str] = None) -> str:
+        """
+        Format parts list for output.
+        
+        Args:
+            parts: List of part dictionaries
+            output_format: Override default output format
+            
+        Returns:
+            Formatted parts list string
+        """
+        format_type = output_format or self.output_format
+        
+        if format_type == 'json':
+            return format_json(parts)
+        elif format_type == 'table':
+            return format_table(parts)
+        elif format_type in ['csv', 'txt']:
+            return self._format_csv_string(parts)
+        else:
+            raise ValueError(f"Unsupported format: {format_type}")
+    
+    def format_statistics(self, stats: Dict[str, Any],
+                         output_format: Optional[str] = None) -> str:
+        """
+        Format statistics for output.
+        
+        Args:
+            stats: Statistics dictionary
+            output_format: Override default output format
+            
+        Returns:
+            Formatted statistics string
+        """
+        format_type = output_format or self.output_format
+        
+        if format_type == 'json':
+            return format_json(stats)
+        elif format_type == 'table':
+            # Convert stats dict to list of dicts for table formatting
+            stats_list = [{'Metric': k, 'Value': v} for k, v in stats.items()]
+            return format_table(stats_list)
+        else:
+            # Default to simple key-value format
+            lines = []
+            for key, value in stats.items():
+                formatted_key = key.replace('_', ' ').title()
+                if isinstance(value, (Decimal, float)) and 'price' in key.lower():
+                    formatted_value = format_currency(value)
+                elif isinstance(value, datetime):
+                    formatted_value = format_datetime(value)
+                elif isinstance(value, bool):
+                    formatted_value = format_boolean(value)
+                else:
+                    formatted_value = str(value)
+                lines.append(f"{formatted_key}: {formatted_value}")
+            return '\n'.join(lines)
+    
+    def write_report(self, data: List[Dict[str, Any]], output_file: Union[str, Path],
+                    headers: Optional[List[str]] = None) -> None:
+        """
+        Write report data to a file.
+        
+        Args:
+            data: Report data to write
+            output_file: Output file path
+            headers: Optional column headers
+        """
+        output_path = Path(output_file)
+        
+        if output_path.suffix.lower() == '.json':
+            with open(output_path, 'w', encoding='utf-8') as f:
+                f.write(format_json(data))
+        elif output_path.suffix.lower() == '.csv':
+            write_csv(data, output_path, headers)
+        else:
+            # Default to text format
+            with open(output_path, 'w', encoding='utf-8') as f:
+                if self.output_format == 'table':
+                    f.write(format_table(data, headers))
+                else:
+                    f.write(self._format_csv_string(data, headers))
+    
+    def _format_csv_string(self, data: List[Dict[str, Any]],
+                          headers: Optional[List[str]] = None) -> str:
+        """
+        Format data as CSV string.
+        
+        Args:
+            data: Data to format
+            headers: Optional column headers
+            
+        Returns:
+            CSV formatted string
+        """
+        if not data:
+            return "No data to display."
+        
+        import io
+        output = io.StringIO()
+        
+        if headers is None:
+            headers = list(data[0].keys()) if data else []
+        
+        writer = csv.DictWriter(output, fieldnames=headers)
+        writer.writeheader()
+        
+        for row in data:
+            # Convert special types for CSV output
+            csv_row = {}
+            for header in headers:
+                value = row.get(header)
+                
+                if isinstance(value, Decimal):
+                    csv_row[header] = float(value)
+                elif isinstance(value, datetime):
+                    csv_row[header] = value.isoformat()
+                elif value is None:
+                    csv_row[header] = ""
+                else:
+                    csv_row[header] = str(value)
+            
+            writer.writerow(csv_row)
+        
+        return output.getvalue()
