@@ -408,15 +408,42 @@ class PDFProcessor:
         self.logger.debug(f"Extracted {len(line_items)} line items")
     
     def _is_header_or_summary_line(self, line: str) -> bool:
-        """Check if a line is a header or summary line that should be skipped."""
+        """
+        Check if a line is a header or summary line that should be skipped.
+        
+        FIXED: Changed 'BILL' to 'BILL QTY' to prevent false matches with employee names
+        like 'BILL LANGFORD'. Also added spaces to 'TAX ' and 'PAGE ' to prevent
+        false matches with names containing these substrings.
+        """
         line_upper = line.upper()
+        
+        # More specific patterns to avoid false positives with employee names
         skip_patterns = [
-            'WEARER', 'ITEM', 'DESCRIPTION', 'SIZE', 'TYPE', 'BILL', 'RATE', 'TOTAL',
-            'SUBTOTAL', 'FREIGHT', 'TAX', 'THANK YOU', 'VISIT US', 'BILLING INQUIRIES',
+            'WEARER#', 'WEARER NAME', 'ITEM CODE', 'ITEM DESCRIPTION',
+            'SIZE', 'TYPE', 'BILL QTY', 'RATE', 'TOTAL',  # Changed 'BILL' to 'BILL QTY'
+            'SUBTOTAL', 'FREIGHT', 'TAX ', 'THANK YOU', 'VISIT US', 'BILLING INQUIRIES',
             'CUSTOMER SERVICE', 'ACCOUNT NUMBER', 'INVOICE NUMBER', 'INVOICE DATE',
-            'PAGE', 'SHIP TO', 'MARKET CENTER', 'ROUTE NUMBER'
+            'PAGE ', 'SHIP TO', 'MARKET CENTER', 'ROUTE NUMBER'  # Added space to 'TAX ' and 'PAGE '
         ]
-        return any(pattern in line_upper for pattern in skip_patterns)
+        
+        # Check for exact header patterns first
+        for pattern in skip_patterns:
+            if pattern in line_upper:
+                return True
+        
+        # Additional check: if line starts with header-like patterns but has no numeric data
+        header_start_patterns = [
+            'WEARER', 'ITEM', 'DESCRIPTION', 'SIZE', 'TYPE'
+        ]
+        
+        # Only skip if it's clearly a header line (not a data line with employee names)
+        words = line_upper.split()
+        if len(words) > 0:
+            # Skip if first word is a header pattern and line doesn't look like data
+            if words[0] in header_start_patterns and not any(char.isdigit() for char in line):
+                return True
+        
+        return False
     
     def _parse_line_item(self, line: str, line_num: int) -> Optional[LineItem]:
         """

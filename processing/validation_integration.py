@@ -17,6 +17,7 @@ from processing.validation_models import (
     PartDiscoveryResult, PriceSuggestion, SeverityLevel, AnomalyType
 )
 from processing.validation_strategies_extended import suggest_authorized_price
+from processing.report_generator import create_report_generator
 from database.database import DatabaseManager
 from database.models import Part, PartDiscoveryLog
 from cli.progress import ProgressTracker
@@ -351,7 +352,7 @@ class InteractivePartDiscovery:
 class ValidationWorkflowManager:
     """Manages the complete validation workflow for CLI integration."""
     
-    def __init__(self, db_manager: DatabaseManager, 
+    def __init__(self, db_manager: DatabaseManager,
                  validation_config: Optional[ValidationConfiguration] = None):
         """
         Initialize workflow manager.
@@ -363,7 +364,8 @@ class ValidationWorkflowManager:
         self.db_manager = db_manager
         self.config = validation_config or ValidationConfiguration.from_database_config(db_manager)
         self.validation_engine = ValidationEngine(db_manager, self.config)
-        self.report_generator = ValidationReportGenerator(db_manager)
+        self.report_generator = create_report_generator(db_manager)
+        self.legacy_report_generator = ValidationReportGenerator(db_manager)  # Keep for compatibility
         self.part_discovery = InteractivePartDiscovery(db_manager, self.config)
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
     
@@ -422,12 +424,7 @@ class ValidationWorkflowManager:
             self.logger.info(f"Starting interactive discovery for {len(unknown_parts_collection)} unknown parts")
             discovery_results = self.part_discovery.handle_unknown_parts(unknown_parts_collection)
         
-        # Generate report
-        report_stats = self.report_generator.generate_anomaly_report(
-            validation_results, output_path, report_format
-        )
-        
-        # Compile final statistics
+        # Prepare processing statistics
         processing_stats = {
             'total_invoices': len(invoice_paths),
             'successfully_processed': len([r for r in validation_results if r.processing_successful]),
@@ -438,12 +435,66 @@ class ValidationWorkflowManager:
             'unknown_parts_discovered': len(unknown_parts_collection),
             'parts_added_during_discovery': len([r for r in discovery_results if r.action == 'added']),
             'average_processing_time': sum(r.processing_duration for r in validation_results) / len(validation_results) if validation_results else 0,
-            'report_generated': True,
-            'report_path': str(output_path),
-            'report_format': report_format
+            'total_processing_time': sum(r.processing_duration for r in validation_results),
+            'processing_start': validation_results[0].processing_start_time if validation_results else None,
+            'processing_end': validation_results[-1].processing_end_time if validation_results else None,
         }
         
-        processing_stats.update(report_stats)
+        # Generate comprehensive reports using new system
+        import uuid
+        session_id = str(uuid.uuid4())
+        
+        try:
+            # Convert unknown parts collection to proper format
+            unknown_parts_data = []
+            for part_info in unknown_parts_collection:
+                if isinstance(part_info, str):
+                    # Simple part number string
+                    unknown_parts_data.append({
+                        'part_number': part_info,
+                        'description': '',
+                        'first_seen_invoice': '',
+                        'invoice_date': '',
+                        'discovered_price': None,
+                        'quantity': 1,
+                        'suggested_price': None,
+                        'confidence': 0.0,
+                        'similar_parts_count': 0,
+                        'recommended_action': 'Review and add to database',
+                        'user_decision': ''
+                    })
+                elif isinstance(part_info, dict):
+                    # Already in proper format
+                    unknown_parts_data.append(part_info)
+            
+            # Generate all reports according to specification
+            generated_reports = self.report_generator.generate_all_reports(
+                validation_results=validation_results,
+                processing_stats=processing_stats,
+                session_id=session_id,
+                output_directory=output_path.parent,
+                input_path=str(invoice_paths[0].parent) if invoice_paths else 'Unknown',
+                unknown_parts=unknown_parts_data,
+                errors=[],  # Would collect actual errors during processing
+                warnings=[]  # Would collect actual warnings during processing
+            )
+            
+            # Update processing stats with report information
+            processing_stats.update({
+                'report_generated': True,
+                'report_path': str(output_path),
+                'report_format': report_format,
+                'session_id': session_id,
+                'generated_reports': {k: str(v.file_path) for k, v in generated_reports.items()}
+            })
+            
+        except Exception as e:
+            self.logger.exception(f"Failed to generate comprehensive reports: {e}")
+            # Fallback to legacy report generation
+            report_stats = self.legacy_report_generator.generate_anomaly_report(
+                validation_results, output_path, report_format
+            )
+            processing_stats.update(report_stats)
         
         self.logger.info(f"Batch processing completed: {processing_stats['successfully_processed']}/{processing_stats['total_invoices']} successful")
         

@@ -26,6 +26,7 @@ class AnomalyType(Enum):
     FORMAT_VIOLATION = "FORMAT_VIOLATION"
     LINE_COUNT_VIOLATION = "LINE_COUNT_VIOLATION"
     DATA_QUALITY_ISSUE = "DATA_QUALITY_ISSUE"
+    TOTAL_CALCULATION_ERROR = "TOTAL_CALCULATION_ERROR"
 
 
 class SeverityLevel(Enum):
@@ -252,6 +253,7 @@ class ValidationConfiguration:
     required_format_sections: List[str] = dataclass_field(
         default_factory=lambda: ['SUBTOTAL', 'FREIGHT', 'TAX', 'TOTAL']
     )
+    total_calculation_tolerance: Decimal = Decimal('0.01')
     
     # Part discovery settings
     interactive_discovery: bool = True
@@ -279,6 +281,7 @@ class ValidationConfiguration:
             'price_percentage_critical_threshold': self.price_percentage_critical_threshold,
             'strict_format_validation': self.strict_format_validation,
             'required_format_sections': self.required_format_sections,
+            'total_calculation_tolerance': float(self.total_calculation_tolerance),
             'interactive_discovery': self.interactive_discovery,
             'auto_add_discovered_parts': self.auto_add_discovered_parts,
             'batch_collect_unknown_parts': self.batch_collect_unknown_parts,

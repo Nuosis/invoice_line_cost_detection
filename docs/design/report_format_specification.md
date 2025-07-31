@@ -42,6 +42,7 @@ The Invoice Rate Detection System generates multiple report types to serve diffe
 | Report Type | Primary User | Purpose | Format | Frequency |
 |-------------|--------------|---------|---------|-----------|
 | **Anomaly Report** | Business Owner | Identify overcharges and pricing issues | CSV | Every processing run |
+| **Detailed Validation Report** | Business Owner | Line-by-line validation analysis with full context | TXT | Every processing run |
 | **Summary Report** | Business Owner | High-level overview and key metrics | TXT | Every processing run |
 | **Unknown Parts** | Business Owner | Manage parts not in database | CSV | When unknown parts found |
 | **Processing Stats** | System Admin | Performance monitoring and optimization | JSON | Every processing run |
@@ -74,17 +75,16 @@ Main business report showing all detected anomalies with complete context for de
 | Percentage Difference | Percentage | X.X% | Percentage variance | 1.6% |
 | Anomaly Type | Enum | String | Type of anomaly detected | PRICE_DISCREPANCY |
 | Severity | Enum | String | CRITICAL, WARNING, INFORMATIONAL | WARNING |
-| Recommended Action | Text | String | Clear next step for user | Review with supplier - minor overcharge |
 | Financial Impact | Currency | $X.XX | Total dollar impact for this line item | $2.00 |
 | Processing Session | UUID | String | Session identifier for tracking | abc123-def456 |
 | Notes | Text | String | Additional context or annotations | Consistent pattern across invoices |
 
 ### Sample Data
 ```csv
-Invoice Number,Invoice Date,Invoice File,Line Number,Part Number,Part Description,Quantity,Invoice Price,Authorized Price,Price Difference,Percentage Difference,Anomaly Type,Severity,Recommended Action,Financial Impact,Processing Session,Notes
-5790256943,06/09/2025,invoice_5790256943.pdf,3,GS0448,SHIRT WORK LS BTN COTTON,8,$15.75,$15.50,$0.25,1.6%,PRICE_DISCREPANCY,WARNING,Review with supplier - minor overcharge,$2.00,abc123-def456,Consistent pattern across multiple invoices
-5790256943,06/09/2025,invoice_5790256943.pdf,7,GP0171NAVY,PANTS WORK NAVY,5,$22.00,$20.00,$2.00,10.0%,PRICE_DISCREPANCY,CRITICAL,Immediate review required - significant overcharge,$10.00,abc123-def456,Price increase not authorized
-5790256944,06/10/2025,invoice_5790256944.pdf,2,XYZ999,UNKNOWN SAFETY VEST,3,$45.00,N/A,N/A,N/A,MISSING_PART,CRITICAL,Add part to database or verify part number,$135.00,abc123-def456,Part not found in master database
+Invoice Number,Invoice Date,Invoice File,Line Number,Part Number,Part Description,Quantity,Invoice Price,Authorized Price,Price Difference,Percentage Difference,Anomaly Type,Severity,Financial Impact,Processing Session,Notes
+5790256943,06/09/2025,invoice_5790256943.pdf,3,GS0448,SHIRT WORK LS BTN COTTON,8,$15.75,$15.50,$0.25,1.6%,PRICE_DISCREPANCY,WARNING,$2.00,abc123-def456,Consistent pattern across multiple invoices
+5790256943,06/09/2025,invoice_5790256943.pdf,7,GP0171NAVY,PANTS WORK NAVY,5,$22.00,$20.00,$2.00,10.0%,PRICE_DISCREPANCY,CRITICAL,$10.00,abc123-def456,Price increase not authorized
+5790256944,06/10/2025,invoice_5790256944.pdf,2,XYZ999,UNKNOWN SAFETY VEST,3,$45.00,N/A,N/A,N/A,MISSING_PART,CRITICAL,$135.00,abc123-def456,Part not found in master database
 ```
 
 ### Sorting Rules
@@ -94,10 +94,106 @@ Invoice Number,Invoice Date,Invoice File,Line Number,Part Number,Part Descriptio
 
 ---
 
+## Detailed Validation Report Format (TXT)
+
+### Purpose
+Comprehensive human-readable report showing detailed validation results with line-by-line analysis for business review.
+
+### File Naming
+`invoice_validation_report_YYYYMMDD_HHMMSS_[session_short].txt`
+
+### Structure Template
+```
+Invoice Rate Detection System - Detailed Validation Report
+============================================================
+Generated: YYYY-MM-DD HH:MM:SS
+Validation Mode: [Threshold: $X.XX/Part Validation]
+
+============================================================
+INVOICE: [Invoice Number]
+============================================================
+Invoice Date: MM/DD/YYYY
+Lines Processed: XX
+
+RATE VALIDATION ERRORS:
+------------------------
+
+Line X: [Employee Name] - [Part Number] [Part Description]
+  Actual Rate: $X.XXX  |  Expected Rate: $X.XXX  |  Difference: ±$X.XXX
+  Quantity: X  |  Line Adjustment: ±$X.XX
+
+[Repeat for each validation error...]
+
+INVOICE TOTALS VALIDATION:
+--------------------------
+Subtotal: [$]
+Freight: [$]
+Tax: [$]
+Total: [$]
+validation: [passed/failed]
+
+Invoice [Number] Summary:
+  Error Lines: XX of XX total lines
+  Invoice Adjustment: ±$XX.XX
+
+[Repeat invoice section for each processed invoice...]
+
+============================================================
+PROCESSING SUMMARY
+============================================================
+
+Total Invoices Processed: X
+
+Line Error Analysis:
+  Total Error Lines: XX
+  Errored Invoices: [Invoice Numbers]
+
+Rate Validation Issues:
+  Lines with rates above threshold ($X.XX): XX
+  Lines with rates below threshold ($X.XX): XX
+  Lines with zero rates: XX
+
+Financial Impact:
+  Total Adjustment Required: ±$XX.XX
+  Overcharges: $XX.XX
+  Undercharges: -$XX.XX
+  Net Adjustment: ±$XX.XX
+
+Subtotal Error Analysis:
+  Total Errored Invoices: XX
+  Errored Invoices: [Invoice Numbers]
+
+Processing Performance:
+  Average Processing Time: X.XXs per invoice
+  Total Processing Time: X.XXs
+  Lines Processed per Second: XXX
+
+============================================================
+END OF REPORT
+============================================================
+```
+
+### Key Features
+- **Invoice-by-Invoice Breakdown**: Each invoice gets its own detailed section
+- **Line-Level Detail**: Every validation error shows specific line information
+- **Employee/Part Context**: Includes employee names and full part descriptions
+- **Financial Impact**: Shows both line-level and invoice-level adjustments
+- **Rate Comparison**: Clear display of actual vs expected rates with differences
+- **Processing Metrics**: Performance statistics for system monitoring
+- **Validation Status**: Clear indicators for totals validation status
+
+### Formatting Rules
+- **Section Separators**: Use `============================================================` for major sections
+- **Subsection Separators**: Use `------------------------` for subsections
+- **Currency Format**: Always show 3 decimal places for rates, 2 for adjustments
+- **Alignment**: Use pipe separators (`|`) for tabular data alignment
+- **Indentation**: Use 2-space indentation for hierarchical information
+- **Line Width**: Maximum 80 characters per line for readability
+
 ## Summary Report Format
 
 ### Purpose
-High-level overview of processing results and key business metrics.
+High-level overview of processing results and key business metrics (legacy format maintained for compatibility).
 
 ### File Naming
 `processing_summary_YYYYMMDD_HHMMSS_[session_short].txt`
@@ -363,10 +459,16 @@ class JSONReportTemplate(ReportTemplate):
 ### TXT Format Requirements
 - **Encoding**: UTF-8
 - **Line Endings**: Platform-appropriate (CRLF on Windows, LF on Unix)
-- **Column Alignment**: Fixed-width columns with proper padding
-- **Section Separators**: Clear visual separators between report sections
-- **Page Width**: Maximum 120 characters for readability
+- **Section Separators**: Use `============================================================` (60 chars) for major sections
+- **Subsection Separators**: Use `------------------------` (24 chars) for subsections
+- **Page Width**: Maximum 80 characters per line for readability
 - **Indentation**: Consistent 2-space indentation for hierarchical data
+- **Currency Precision**: 3 decimal places for rates ($X.XXX), 2 for adjustments ($X.XX)
+- **Alignment**: Use pipe separators (`|`) for tabular data alignment
+- **Date Format**: YYYY-MM-DD HH:MM:SS for timestamps, MM/DD/YYYY for invoice dates
+- **Status Indicators**: Use bracketed text for validation status [VALIDATION NEEDED/PASSED/FAILED]
+- **Financial Formatting**: Use ± symbols for positive/negative adjustments
+- **Performance Metrics**: Include decimal precision for timing (X.XXs) and throughput metrics
 
 ### JSON Format Requirements
 - **Schema**: Well-defined JSON schema for programmatic access
@@ -385,7 +487,7 @@ class JSONReportTemplate(ReportTemplate):
 [report_type]_[date]_[time]_[session_id_short].extension
 
 Components:
-- report_type: invoice_anomalies, processing_summary, unknown_parts, processing_errors, processing_stats
+- report_type: invoice_anomalies, invoice_validation_report, processing_summary, unknown_parts, processing_errors, processing_stats
 - date: YYYYMMDD format
 - time: HHMMSS format (24-hour)
 - session_id_short: First 6 characters of session UUID
@@ -393,6 +495,7 @@ Components:
 
 Examples:
 - invoice_anomalies_20250729_143022_a1b2c3.csv
+- invoice_validation_report_20250729_143022_a1b2c3.txt
 - processing_summary_20250729_143022_a1b2c3.txt
 - unknown_parts_20250729_143022_a1b2c3.csv
 ```
@@ -404,6 +507,7 @@ reports/
 │   ├── 2025-07-29/
 │   │   ├── session_a1b2c3_143022/
 │   │   │   ├── invoice_anomalies_20250729_143022_a1b2c3.csv
+│   │   │   ├── invoice_validation_report_20250729_143022_a1b2c3.txt
 │   │   │   ├── processing_summary_20250729_143022_a1b2c3.txt
 │   │   │   ├── unknown_parts_20250729_143022_a1b2c3.csv
 │   │   │   ├── processing_errors_20250729_143022_a1b2c3.txt
@@ -415,6 +519,7 @@ reports/
 │   └── 2025-06/
 └── templates/                        # Report templates and examples
     ├── sample_anomaly_report.csv
+    ├── sample_validation_report.txt
     ├── sample_summary_report.txt
     └── report_interpretation_guide.pdf
 ```
@@ -443,6 +548,23 @@ Your report identifies potential overcharges and issues in your invoices. Each r
 - **"Review with supplier - minor overcharge"**: Contact your supplier about a small price increase
 - **"Immediate review required - significant overcharge"**: Call supplier immediately about major pricing error
 - **"Add part to database or verify part number"**: This part isn't in your system - either add it or check if the part number is correct
+
+### Reading the Detailed Validation Report (TXT)
+
+**Report Header**: Shows when the report was generated, validation threshold, and mode used
+**Invoice Sections**: Each invoice gets its own section with detailed line-by-line analysis
+**Rate Validation Errors**: Shows every line item that failed validation with:
+  - Employee name and part information
+  - Actual vs expected rates with differences
+  - Quantity and financial impact per line
+**Invoice Totals**: Validation status for subtotal, freight, tax, and total amounts
+**Processing Summary**: Overall statistics including error counts, financial impact, and performance metrics
+
+**Key Information to Focus On:**
+- **Line Adjustments**: Shows how much each error costs you (+ means overcharge, - means undercharge)
+- **Invoice Adjustment**: Total financial impact per invoice
+- **Net Adjustment**: Overall financial impact across all invoices
+- **Error Analysis**: Breakdown of different types of validation issues
 
 ### Reading the Summary Report
 

@@ -281,8 +281,9 @@ def run_interactive_processing(ctx, preset=None, save_preset=None):
         input_path = prompt_for_input_path()
         
         # Check if single file mode was requested
-        single_file_mode = hasattr(input_path, '_single_file_mode') and input_path._single_file_mode
-        original_file = getattr(input_path, '_original_file', None) if single_file_mode else None
+        from cli.prompts import PathWithMetadata
+        single_file_mode = isinstance(input_path, PathWithMetadata) and input_path.single_file_mode
+        original_file = input_path.original_file if single_file_mode else None
         
         if single_file_mode and original_file:
             print_info(f"Processing single file: {original_file.name}")
@@ -326,8 +327,13 @@ def run_interactive_processing(ctx, preset=None, save_preset=None):
         # Pass the specific files to process if in single file mode
         if single_file_mode and original_file:
             # Create a custom input path that includes the file list
-            custom_input = input_path
-            custom_input._pdf_files_override = pdf_files
+            if isinstance(input_path, PathWithMetadata):
+                custom_input = input_path
+                custom_input.pdf_files_override = pdf_files
+            else:
+                # Fallback: create a new PathWithMetadata
+                custom_input = PathWithMetadata(input_path)
+                custom_input.pdf_files_override = pdf_files
         else:
             custom_input = input_path
             
@@ -377,8 +383,9 @@ def _discover_pdf_files(input_path: Path) -> List[Path]:
         ProcessingError: If no PDF files are found
     """
     # Check if we have a PDF files override (for single file mode from interactive prompts)
-    if hasattr(input_path, '_pdf_files_override'):
-        pdf_files = input_path._pdf_files_override
+    from cli.prompts import PathWithMetadata
+    if isinstance(input_path, PathWithMetadata) and input_path.pdf_files_override:
+        pdf_files = input_path.pdf_files_override
         print_info(f"Using specified PDF files: {len(pdf_files)} files to process")
         return pdf_files
     

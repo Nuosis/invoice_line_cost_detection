@@ -189,6 +189,62 @@ class InvoiceData:
         subtotal_section = self.get_format_section('SUBTOTAL')
         return subtotal_section.amount if subtotal_section else None
 
+    def get_freight_amount(self) -> Optional[Decimal]:
+        """Get the freight amount from format sections."""
+        freight_section = self.get_format_section('FREIGHT')
+        return freight_section.amount if freight_section else None
+
+    def get_tax_amount(self) -> Optional[Decimal]:
+        """Get the tax amount from format sections."""
+        tax_section = self.get_format_section('TAX')
+        return tax_section.amount if tax_section else None
+
+    def calculate_expected_total(self) -> Optional[Decimal]:
+        """Calculate expected total as Subtotal + Freight + Tax."""
+        subtotal = self.get_subtotal_amount()
+        freight = self.get_freight_amount()
+        tax = self.get_tax_amount()
+        
+        if subtotal is None or freight is None or tax is None:
+            return None
+            
+        return subtotal + freight + tax
+
+    def validate_total_calculation(self, tolerance: Decimal = Decimal('0.01')) -> bool:
+        """
+        Validate that Total = Subtotal + Freight + Tax within tolerance.
+        
+        Args:
+            tolerance: Acceptable difference between expected and actual total
+            
+        Returns:
+            True if calculation is valid, False otherwise
+        """
+        expected_total = self.calculate_expected_total()
+        actual_total = self.get_total_amount()
+        
+        if expected_total is None or actual_total is None:
+            return False
+            
+        difference = abs(expected_total - actual_total)
+        return difference <= tolerance
+
+    def get_total_calculation_discrepancy(self) -> Optional[Decimal]:
+        """
+        Get the discrepancy between expected and actual total.
+        
+        Returns:
+            Difference amount (positive if actual > expected, negative if actual < expected)
+            None if calculation cannot be performed
+        """
+        expected_total = self.calculate_expected_total()
+        actual_total = self.get_total_amount()
+        
+        if expected_total is None or actual_total is None:
+            return None
+            
+        return actual_total - expected_total
+
     def validate_format_sequence(self) -> bool:
         """Validate that format sections are in correct order."""
         expected_sequence = ['SUBTOTAL', 'FREIGHT', 'TAX', 'TOTAL']

@@ -20,6 +20,90 @@ from cli.exceptions import ValidationError, UserCancelledError
 from cli.formatters import print_info, print_warning, format_currency
 
 
+class PathWithMetadata:
+    """
+    A wrapper around pathlib.Path that allows storing additional metadata.
+    
+    This class behaves like a Path object but can store additional attributes
+    needed for single file processing and other metadata.
+    """
+    
+    def __init__(self, path: Path):
+        """Initialize with a Path object."""
+        self._path = path
+        self._single_file_mode = False
+        self._original_file = None
+        self._pdf_files_override = None
+    
+    def __getattr__(self, name):
+        """Delegate attribute access to the underlying Path object."""
+        return getattr(self._path, name)
+    
+    def __str__(self):
+        """Return string representation of the path."""
+        return str(self._path)
+    
+    def __repr__(self):
+        """Return representation of the path."""
+        return f"PathWithMetadata({repr(self._path)})"
+    
+    def __fspath__(self):
+        """Return the file system path representation."""
+        return str(self._path)
+    
+    @property
+    def single_file_mode(self) -> bool:
+        """Check if this path is in single file mode."""
+        return self._single_file_mode
+    
+    @single_file_mode.setter
+    def single_file_mode(self, value: bool):
+        """Set single file mode."""
+        self._single_file_mode = value
+    
+    @property
+    def original_file(self) -> Optional[Path]:
+        """Get the original file path for single file mode."""
+        return self._original_file
+    
+    @original_file.setter
+    def original_file(self, value: Optional[Path]):
+        """Set the original file path."""
+        self._original_file = value
+    
+    @property
+    def pdf_files_override(self) -> Optional[List[Path]]:
+        """Get the PDF files override list."""
+        return self._pdf_files_override
+    
+    @pdf_files_override.setter
+    def pdf_files_override(self, value: Optional[List[Path]]):
+        """Set the PDF files override list."""
+        self._pdf_files_override = value
+    
+    # Support for hasattr checks used in the codebase
+    def __setattr__(self, name, value):
+        """Set attribute, handling both metadata and path delegation."""
+        if name.startswith('_') or name in ['single_file_mode', 'original_file', 'pdf_files_override']:
+            super().__setattr__(name, value)
+        else:
+            # For backward compatibility with the existing code that sets attributes directly
+            if name == '_single_file_mode':
+                self._single_file_mode = value
+            elif name == '_original_file':
+                self._original_file = value
+            elif name == '_pdf_files_override':
+                self._pdf_files_override = value
+            else:
+                super().__setattr__(name, value)
+    
+    def __hasattr__(self, name):
+        """Check if attribute exists on this object or the underlying path."""
+        if name in ['_single_file_mode', '_original_file', '_pdf_files_override']:
+            return True
+        return hasattr(self._path, name)
+
+
 def prompt_for_input_path(message: str = "Enter path to folder containing PDF invoices",
                          must_exist: bool = True) -> Path:
     """
@@ -78,11 +162,11 @@ def prompt_for_input_path(message: str = "Enter path to folder containing PDF in
                         choice = prompt_for_choice("What would you like to do?", choices, default=choices[0])
                         
                         if choice.startswith("Process only this file"):
-                            # Return a special marker that indicates single file processing
-                            # We'll store the original file path in a way the caller can detect
-                            path._single_file_mode = True
-                            path._original_file = path
-                            return path.parent
+                            # Return a PathWithMetadata that indicates single file processing
+                            metadata_path = PathWithMetadata(parent_dir)
+                            metadata_path.single_file_mode = True
+                            metadata_path.original_file = path
+                            return metadata_path
                         elif choice.startswith("Process all"):
                             return parent_dir
                         else:  # Choose different path
@@ -90,10 +174,11 @@ def prompt_for_input_path(message: str = "Enter path to folder containing PDF in
                     else:
                         print_info("This is the only PDF file in the directory")
                         if click.confirm(f"Process this single file ({path.name})?", default=True):
-                            # Return a special marker that indicates single file processing
-                            path._single_file_mode = True
-                            path._original_file = path
-                            return path.parent
+                            # Return a PathWithMetadata that indicates single file processing
+                            metadata_path = PathWithMetadata(parent_dir)
+                            metadata_path.single_file_mode = True
+                            metadata_path.original_file = path
+                            return metadata_path
                         else:
                             print_info("Please provide a folder path instead")
                             continue

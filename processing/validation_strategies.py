@@ -451,7 +451,8 @@ class FormatStructureValidationStrategy(ValidationStrategy):
     Format structure validation strategy for invoice format compliance.
     
     This strategy ensures that invoices follow the required format structure
-    with proper SUBTOTAL → FREIGHT → TAX → TOTAL sequence.
+    with proper SUBTOTAL, FREIGHT, TAX, TOTAL sections and validates that
+    the mathematical relationship (Subtotal + Freight + Tax = Total) holds true.
     """
     
     def validate(self, context: Dict[str, Any]) -> List[ValidationResult]:
@@ -478,11 +479,11 @@ class FormatStructureValidationStrategy(ValidationStrategy):
         # Validate format sections count
         results.extend(self._validate_format_sections_count(invoice_data))
         
-        # Validate format sections sequence
-        results.extend(self._validate_format_sections_sequence(invoice_data))
-        
         # Validate format sections content
         results.extend(self._validate_format_sections_content(invoice_data))
+        
+        # Validate mathematical total calculation (replaces sequence validation)
+        results.extend(self._validate_total_calculation(invoice_data))
         
         return results
     
@@ -514,40 +515,86 @@ class FormatStructureValidationStrategy(ValidationStrategy):
         
         return results
     
-    def _validate_format_sections_sequence(self, invoice_data: InvoiceData) -> List[ValidationResult]:
-        """Validate that format sections are in correct order."""
+    def _validate_total_calculation(self, invoice_data: InvoiceData) -> List[ValidationResult]:
+        """
+        Validate that Total = Subtotal + Freight + Tax (mathematical validation).
+        
+        This replaces the old proximity-based sequence validation with actual
+        mathematical verification of the invoice totals.
+        """
         results = []
         
-        if len(invoice_data.format_sections) != len(self.config.required_format_sections):
-            # Skip sequence validation if count is wrong
+        # Get all required amounts
+        subtotal = invoice_data.get_subtotal_amount()
+        freight = invoice_data.get_freight_amount()
+        tax = invoice_data.get_tax_amount()
+        total = invoice_data.get_total_amount()
+        
+        # Check if all required sections are present
+        missing_sections = []
+        if subtotal is None:
+            missing_sections.append('SUBTOTAL')
+        if freight is None:
+            missing_sections.append('FREIGHT')
+        if tax is None:
+            missing_sections.append('TAX')
+        if total is None:
+            missing_sections.append('TOTAL')
+        
+        if missing_sections:
+            results.append(self._create_result(
+                False, SeverityLevel.CRITICAL,
+                f"Missing required format sections: {', '.join(missing_sections)}",
+                AnomalyType.FORMAT_VIOLATION,
+                field='format_sections',
+                details={'missing_sections': missing_sections}
+            ))
             return results
         
-        expected_sequence = self.config.required_format_sections
-        actual_sequence = [section.section_type.upper() for section in invoice_data.format_sections]
+        # Perform mathematical validation
+        expected_total = invoice_data.calculate_expected_total()
+        discrepancy = invoice_data.get_total_calculation_discrepancy()
         
-        for i, (expected, actual) in enumerate(zip(expected_sequence, actual_sequence)):
-            if actual != expected:
-                results.append(self._create_result(
-                    False, SeverityLevel.CRITICAL,
-                    f"Format sequence violation at position {i + 1}: expected {expected}, found {actual}",
-                    AnomalyType.FORMAT_VIOLATION,
-                    field='format_sections',
-                    details={
-                        'position': i + 1,
-                        'expected': expected,
-                        'actual': actual,
-                        'expected_sequence': expected_sequence,
-                        'actual_sequence': actual_sequence
-                    }
-                ))
-                return results  # Stop on first sequence error
+        # Use configurable tolerance (default 1 cent)
+        tolerance = getattr(self.config, 'total_calculation_tolerance', Decimal('0.01'))
         
-        results.append(self._create_result(
-            True, SeverityLevel.INFORMATIONAL,
-            "Format sections are in correct sequence",
-            field='format_sections',
-            details={'sequence': actual_sequence}
-        ))
+        if abs(discrepancy) <= tolerance:
+            results.append(self._create_result(
+                True, SeverityLevel.INFORMATIONAL,
+                f"Total calculation is correct: ${subtotal} + ${freight} + ${tax} = ${total}",
+                field='format_sections',
+                details={
+                    'subtotal': float(subtotal),
+                    'freight': float(freight),
+                    'tax': float(tax),
+                    'expected_total': float(expected_total),
+                    'actual_total': float(total),
+                    'discrepancy': float(discrepancy),
+                    'tolerance': float(tolerance)
+                }
+            ))
+        else:
+            # Determine severity based on discrepancy size
+            severity = SeverityLevel.CRITICAL if abs(discrepancy) > Decimal('1.00') else SeverityLevel.WARNING
+            
+            direction = "higher" if discrepancy > 0 else "lower"
+            results.append(self._create_result(
+                False, severity,
+                f"Total calculation error: Expected ${expected_total} (${subtotal} + ${freight} + ${tax}), "
+                f"but found ${total} ({direction} by ${abs(discrepancy)})",
+                AnomalyType.TOTAL_CALCULATION_ERROR,
+                field='format_sections',
+                details={
+                    'subtotal': float(subtotal),
+                    'freight': float(freight),
+                    'tax': float(tax),
+                    'expected_total': float(expected_total),
+                    'actual_total': float(total),
+                    'discrepancy': float(discrepancy),
+                    'discrepancy_direction': direction,
+                    'tolerance': float(tolerance)
+                }
+            ))
         
         return results
     
