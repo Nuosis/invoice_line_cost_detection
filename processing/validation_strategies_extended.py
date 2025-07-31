@@ -623,6 +623,100 @@ def calculate_part_similarity(part1: str, part2: str) -> float:
     return common_chars / max_len if max_len > 0 else 0.0
 
 
+class ThresholdValidationStrategy(ValidationStrategy):
+    """
+    Threshold-based validation strategy for simple price threshold checking.
+    
+    This strategy validates line item prices against a configurable threshold
+    without requiring a parts database. Items above the threshold are flagged
+    as potential anomalies.
+    """
+    
+    def validate(self, context: Dict[str, Any]) -> List[ValidationResult]:
+        """
+        Perform threshold-based validation.
+        
+        Args:
+            context: Must contain 'invoice_data'
+            
+        Returns:
+            List of validation results
+        """
+        results = []
+        invoice_data = context.get('invoice_data')
+        
+        if not invoice_data:
+            results.append(self._create_result(
+                False, SeverityLevel.CRITICAL,
+                "No invoice data provided for threshold validation",
+                AnomalyType.DATA_QUALITY_ISSUE
+            ))
+            return results
+        
+        # Get threshold from configuration
+        threshold = self.config.threshold_value
+        
+        # Validate each line item against threshold
+        for item in invoice_data.get_valid_line_items():
+            if item.rate is None:
+                continue
+                
+            if item.rate > threshold:
+                results.append(self._create_result(
+                    False, SeverityLevel.WARNING,
+                    f"Price ${item.rate} exceeds threshold ${threshold} for part {item.item_code}",
+                    AnomalyType.PRICE_DISCREPANCY,
+                    field='rate',
+                    line_number=item.line_number,
+                    details={
+                        'part_number': item.item_code,
+                        'price': float(item.rate),
+                        'threshold': float(threshold),
+                        'excess_amount': float(item.rate - threshold),
+                        'quantity': item.quantity,
+                        'total_impact': float((item.rate - threshold) * (item.quantity or 1))
+                    }
+                ))
+            else:
+                results.append(self._create_result(
+                    True, SeverityLevel.INFORMATIONAL,
+                    f"Price ${item.rate} is within threshold ${threshold} for part {item.item_code}",
+                    field='rate',
+                    line_number=item.line_number,
+                    details={
+                        'part_number': item.item_code,
+                        'price': float(item.rate),
+                        'threshold': float(threshold)
+                    }
+                ))
+        
+        # Summary result
+        threshold_violations = [r for r in results if not r.is_valid]
+        if threshold_violations:
+            results.append(self._create_result(
+                False, SeverityLevel.WARNING,
+                f"Found {len(threshold_violations)} items exceeding price threshold ${threshold}",
+                AnomalyType.PRICE_DISCREPANCY,
+                details={
+                    'threshold': float(threshold),
+                    'violations': len(threshold_violations),
+                    'total_items': len([r for r in results if r.field == 'rate'])
+                }
+            ))
+        else:
+            valid_items = len([r for r in results if r.is_valid and r.field == 'rate'])
+            results.append(self._create_result(
+                True, SeverityLevel.INFORMATIONAL,
+                f"All {valid_items} items are within price threshold ${threshold}",
+                details={
+                    'threshold': float(threshold),
+                    'validated_items': valid_items
+                }
+            ))
+        
+        return results
+
+
 def round_to_common_price_point(price: Decimal) -> Decimal:
     """
     Round price to common price points.

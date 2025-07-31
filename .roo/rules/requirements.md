@@ -45,10 +45,24 @@
 
 ### Test-Driven Development
 - **Unit Testing**: Write comprehensive unit tests with high coverage (>80%)
+    - integration and user input/scenarios mocking permitted
+    - Goal: validate business logic
 - **Integration Testing**: Test component interactions and system workflows
+    - user input and scenarios mocking permitted
+    - Goal: verify component interoperability
 - **End-to-End Testing**: Validate complete user scenarios
+    - user UI mocking permitted
+    - Goal: verify workflows without ui/us layer
+- **Journey Testing**: Validate complete user ui/ux scenarios
+    - simulated user response permitted
+    - Goal: User UI experience funcitonal
+    - When testing a journey test file, **EXIT 0 with NO OUTPUT is a sign that the ui hung and expected user interaction** Requiring user input is not permitted for Journey testing. User input must be automated.
 - **Test Automation**: Automate test execution and reporting
 - **Test Data Management**: Use appropriate test data and mock objects. Minimized MOCKING as much as possible
+
+**When running test suites**
+- Run from most fundamental to most complex. 
+- Do not run a test or test file that is dependent on implementations that have not been tested.
 
 ### Quality Assurance
 - **Code Reviews**: Implement peer review processes
@@ -169,5 +183,5 @@
 - **Testing**: Test configuration changes in non-production environments first
 - **Approval Processes**: Implement appropriate approval processes for critical changes
 
-### COntext Awareness
+### Context Awareness
 - **roo.md** if a file is in a directory and that directory also has a roo.md file in it, the roo.md file contains important context specific to that directory and should be read prior to interacting with files in the directory

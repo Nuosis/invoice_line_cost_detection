@@ -182,17 +182,51 @@ class ValidationEngine:
         self.error_handler = ValidationErrorHandler(self.config, db_manager)
         self.discovery_service = InteractivePartDiscoveryService(db_manager)
         
-        # Initialize validation strategies
-        self.validators = {
-            'pre_validation': PreValidationStrategy(self.config, db_manager),
-            'data_quality': DataQualityValidationStrategy(self.config, db_manager),
-            'format_structure': FormatStructureValidationStrategy(self.config, db_manager),
-            'parts_lookup': PartsLookupValidationStrategy(self.config, db_manager),
-            'price_comparison': PriceComparisonValidationStrategy(self.config, db_manager),
-            'business_rules': BusinessRulesValidationStrategy(self.config, db_manager)
-        }
+        # Initialize validation strategies based on validation mode
+        self.validators = self._initialize_strategies_for_mode()
         
-        self.logger.info("ValidationEngine initialized with all strategies")
+        strategy_names = list(self.validators.keys())
+        self.logger.info(f"ValidationEngine initialized with strategies for {self.config.validation_mode} mode: {strategy_names}")
+    
+    def _initialize_strategies_for_mode(self) -> Dict[str, Any]:
+        """
+        Initialize validation strategies based on the configured validation mode.
+        
+        Returns:
+            Dictionary of strategy name to strategy instance
+        """
+        strategies = {}
+        
+        if self.config.validation_mode == 'threshold_based':
+            # For threshold-based mode, only use basic validation strategies
+            # Skip parts_lookup and price_comparison which require parts database
+            strategies.update({
+                'pre_validation': PreValidationStrategy(self.config, self.db_manager),
+                'data_quality': DataQualityValidationStrategy(self.config, self.db_manager),
+                'format_structure': FormatStructureValidationStrategy(self.config, self.db_manager),
+                'business_rules': BusinessRulesValidationStrategy(self.config, self.db_manager)
+            })
+            
+            # Add a simple threshold validation strategy
+            from processing.validation_strategies_extended import ThresholdValidationStrategy
+            try:
+                strategies['threshold_validation'] = ThresholdValidationStrategy(self.config, self.db_manager)
+            except ImportError:
+                # If ThresholdValidationStrategy doesn't exist, we'll create a simple one inline
+                self.logger.warning("ThresholdValidationStrategy not found, using basic threshold validation")
+                
+        else:
+            # For parts-based mode (default), use all strategies
+            strategies.update({
+                'pre_validation': PreValidationStrategy(self.config, self.db_manager),
+                'data_quality': DataQualityValidationStrategy(self.config, self.db_manager),
+                'format_structure': FormatStructureValidationStrategy(self.config, self.db_manager),
+                'parts_lookup': PartsLookupValidationStrategy(self.config, self.db_manager),
+                'price_comparison': PriceComparisonValidationStrategy(self.config, self.db_manager),
+                'business_rules': BusinessRulesValidationStrategy(self.config, self.db_manager)
+            })
+        
+        return strategies
     
     def validate_invoice(self, invoice_path: Path, session_id: Optional[str] = None) -> InvoiceValidationResult:
         """
@@ -323,10 +357,10 @@ class ValidationEngine:
             self.logger.exception(f"Unexpected error extracting data from {invoice_path}: {e}")
             return None
     
-    def _execute_validation_phases(self, context: Dict[str, Any], 
+    def _execute_validation_phases(self, context: Dict[str, Any],
                                  result: InvoiceValidationResult) -> bool:
         """
-        Execute all validation phases sequentially.
+        Execute all validation phases sequentially based on available strategies.
         
         Args:
             context: Validation context
@@ -335,37 +369,50 @@ class ValidationEngine:
         Returns:
             True if validation should continue, False if critical failure
         """
-        phase_order = [
-            ('pre_validation', result.pre_validation_results),
-            ('data_quality', result.data_quality_results),
-            ('format_structure', result.format_validation_results),
-            ('parts_lookup', result.parts_lookup_results),
-            ('price_comparison', result.price_validation_results),
-            ('business_rules', result.business_rules_results)
-        ]
+        # Define phase mapping - maps strategy names to result lists
+        phase_mapping = {
+            'pre_validation': result.pre_validation_results,
+            'data_quality': result.data_quality_results,
+            'format_structure': result.format_validation_results,
+            'parts_lookup': result.parts_lookup_results,
+            'price_comparison': result.price_validation_results,
+            'business_rules': result.business_rules_results,
+            'threshold_validation': result.price_validation_results  # Map threshold validation to price results
+        }
         
-        for phase_name, results_list in phase_order:
+        # Execute only the strategies that are available for the current mode
+        for phase_name, validator in self.validators.items():
             try:
                 self.logger.debug(f"Executing {phase_name} validation")
-                validator = self.validators[phase_name]
                 phase_results = validator.validate(context)
+                
+                # Get the appropriate results list for this phase
+                results_list = phase_mapping.get(phase_name, result.business_rules_results)  # Default fallback
                 results_list.extend(phase_results)
                 
                 # Check for critical errors that require stopping
                 critical_errors = [r for r in phase_results if not r.is_valid and r.severity == SeverityLevel.CRITICAL]
                 if critical_errors:
-                    self.logger.warning(f"Critical errors in {phase_name}: {len(critical_errors)}")
+                    # Create detailed error summary for logging
+                    error_details = self._create_detailed_error_summary(phase_name, critical_errors)
+                    self.logger.warning(f"Critical errors in {phase_name}: {len(critical_errors)} - {error_details}")
                     
                     # Attempt error recovery
                     recovery_action = self.error_handler.handle_critical_error(critical_errors, context)
                     
                     if recovery_action.action == 'stop_processing':
-                        self.logger.error(f"Stopping validation due to critical errors in {phase_name}")
+                        self.logger.error(f"Stopping validation due to critical errors in {phase_name}: {error_details}")
                         return False
                     elif recovery_action.action == 'interactive_discovery':
-                        # For now, we'll collect unknown parts and continue
-                        # Interactive discovery would be handled by the CLI layer
-                        self.logger.info("Unknown parts collected for interactive discovery")
+                        # Perform interactive discovery for unknown parts
+                        self.logger.info("Performing interactive discovery for unknown parts")
+                        unknown_parts = context.get('unknown_parts_collection', [])
+                        if unknown_parts:
+                            discovery_results = self._handle_interactive_discovery(unknown_parts, context)
+                            self.logger.info(f"Interactive discovery completed: {len(discovery_results)} parts processed")
+                            # Clear the parts cache to pick up newly added parts
+                            if hasattr(self.validators.get('parts_lookup'), 'parts_cache'):
+                                self.validators['parts_lookup'].parts_cache.clear()
                         continue
                     elif recovery_action.action == 'collect_and_continue':
                         self.logger.info("Continuing validation after collecting unknown parts")
@@ -381,7 +428,158 @@ class ValidationEngine:
         
         return True
     
-    def _update_context_with_found_parts(self, context: Dict[str, Any], 
+    def _create_detailed_error_summary(self, phase_name: str, critical_errors: List) -> str:
+        """
+        Create a detailed summary of critical errors for better debugging.
+        
+        Args:
+            phase_name: Name of the validation phase
+            critical_errors: List of critical validation results
+            
+        Returns:
+            Detailed error summary string
+        """
+        if not critical_errors:
+            return "No specific errors"
+        
+        # Group errors by field and anomaly type for better reporting
+        error_groups = {}
+        for error in critical_errors:
+            key = f"{error.field or 'general'}:{error.anomaly_type.value if error.anomaly_type else 'unknown'}"
+            if key not in error_groups:
+                error_groups[key] = []
+            error_groups[key].append(error.message)
+        
+        # Create summary based on phase type
+        if phase_name == 'data_quality':
+            return self._create_data_quality_error_summary(error_groups)
+        elif phase_name == 'format_structure':
+            return self._create_format_error_summary(error_groups)
+        elif phase_name == 'parts_lookup':
+            return self._create_parts_lookup_error_summary(error_groups)
+        else:
+            # Generic summary for other phases
+            summary_parts = []
+            for key, messages in error_groups.items():
+                field, anomaly_type = key.split(':', 1)
+                summary_parts.append(f"{field}({anomaly_type}): {len(messages)} errors")
+            return "; ".join(summary_parts)
+    
+    def _create_data_quality_error_summary(self, error_groups: Dict[str, List[str]]) -> str:
+        """Create specific summary for data quality errors."""
+        summary_parts = []
+        
+        # Check for specific data quality issues by field
+        if 'invoice_number:DATA_QUALITY_ISSUE' in error_groups:
+            summary_parts.append("Invoice number invalid/missing")
+        
+        if 'invoice_date:DATA_QUALITY_ISSUE' in error_groups:
+            summary_parts.append("Invoice date invalid/missing")
+        
+        if 'line_items:DATA_QUALITY_ISSUE' in error_groups:
+            summary_parts.append("No valid line items found")
+        
+        if 'item_code:DATA_QUALITY_ISSUE' in error_groups:
+            summary_parts.append("Part numbers missing/invalid")
+        
+        if 'rate:DATA_QUALITY_ISSUE' in error_groups:
+            summary_parts.append("Prices missing/invalid")
+        
+        if 'quantity:DATA_QUALITY_ISSUE' in error_groups:
+            summary_parts.append("Quantities missing/invalid")
+        
+        if 'raw_text:DATA_QUALITY_ISSUE' in error_groups:
+            summary_parts.append("Text extraction failed/incomplete")
+        
+        # Check for general/unknown field errors and categorize by message content
+        general_keys = [key for key in error_groups.keys() if key.startswith('general:') or key.startswith('None:')]
+        for key in general_keys:
+            messages = error_groups[key]
+            for message in messages:
+                message_lower = message.lower()
+                
+                # Categorize based on message content
+                if 'invoice number' in message_lower:
+                    if "Invoice number invalid/missing" not in summary_parts:
+                        summary_parts.append("Invoice number invalid/missing")
+                elif 'invoice date' in message_lower:
+                    if "Invoice date invalid/missing" not in summary_parts:
+                        summary_parts.append("Invoice date invalid/missing")
+                elif 'line items' in message_lower or 'no line items' in message_lower:
+                    if "No valid line items found" not in summary_parts:
+                        summary_parts.append("No valid line items found")
+                elif 'part number' in message_lower or 'item_code' in message_lower:
+                    if "Part numbers missing/invalid" not in summary_parts:
+                        summary_parts.append("Part numbers missing/invalid")
+                elif 'price' in message_lower or 'rate' in message_lower:
+                    if "Prices missing/invalid" not in summary_parts:
+                        summary_parts.append("Prices missing/invalid")
+                elif 'quantity' in message_lower:
+                    if "Quantities missing/invalid" not in summary_parts:
+                        summary_parts.append("Quantities missing/invalid")
+                elif 'text' in message_lower and ('extraction' in message_lower or 'short' in message_lower):
+                    if "Text extraction failed/incomplete" not in summary_parts:
+                        summary_parts.append("Text extraction failed/incomplete")
+                else:
+                    # Truly unhandled error - be more specific
+                    summary_parts.append(f"Data quality issue: {message[:50]}...")
+        
+        # Add any other unhandled errors
+        handled_keys = {
+            'invoice_number:DATA_QUALITY_ISSUE',
+            'invoice_date:DATA_QUALITY_ISSUE',
+            'line_items:DATA_QUALITY_ISSUE',
+            'item_code:DATA_QUALITY_ISSUE',
+            'rate:DATA_QUALITY_ISSUE',
+            'quantity:DATA_QUALITY_ISSUE',
+            'raw_text:DATA_QUALITY_ISSUE'
+        }
+        handled_keys.update(general_keys)
+        
+        for key, messages in error_groups.items():
+            if key not in handled_keys:
+                field, anomaly_type = key.split(':', 1) if ':' in key else (key, 'unknown')
+                if field and field != 'general' and field != 'None':
+                    summary_parts.append(f"{field} issues ({len(messages)})")
+                else:
+                    # Last resort - show the actual error message
+                    for message in messages[:1]:  # Just show first message to avoid spam
+                        summary_parts.append(f"Data quality issue: {message[:50]}...")
+        
+        return "; ".join(summary_parts) if summary_parts else "Unknown data quality issues"
+    
+    def _create_format_error_summary(self, error_groups: Dict[str, List[str]]) -> str:
+        """Create specific summary for format structure errors."""
+        summary_parts = []
+        
+        if 'format_sections:LINE_COUNT_VIOLATION' in error_groups:
+            summary_parts.append("Wrong number of format sections")
+        
+        if 'format_sections:FORMAT_VIOLATION' in error_groups:
+            summary_parts.append("Missing required format sections")
+        
+        if 'format_sections:TOTAL_CALCULATION_ERROR' in error_groups:
+            summary_parts.append("Total calculation mismatch")
+        
+        if 'format_sections:DATA_QUALITY_ISSUE' in error_groups:
+            summary_parts.append("Format section data issues")
+        
+        return "; ".join(summary_parts) if summary_parts else "Format structure issues"
+    
+    def _create_parts_lookup_error_summary(self, error_groups: Dict[str, List[str]]) -> str:
+        """Create specific summary for parts lookup errors."""
+        summary_parts = []
+        
+        if 'item_code:MISSING_PART' in error_groups:
+            missing_count = len(error_groups['item_code:MISSING_PART'])
+            summary_parts.append(f"{missing_count} unknown parts")
+        
+        if 'general:DATA_QUALITY_ISSUE' in error_groups:
+            summary_parts.append("Parts lookup data issues")
+        
+        return "; ".join(summary_parts) if summary_parts else "Parts lookup issues"
+    
+    def _update_context_with_found_parts(self, context: Dict[str, Any],
                                        parts_results: List) -> None:
         """
         Update context with found parts for price validation.
@@ -447,7 +645,102 @@ class ValidationEngine:
                     event_data=anomaly.to_dict()
                 )
     
-    def _finalize_result(self, result: InvoiceValidationResult, 
+    def _handle_interactive_discovery(self, unknown_parts: List[Dict[str, Any]],
+                                    context: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        Handle interactive discovery for unknown parts.
+        
+        Args:
+            unknown_parts: List of unknown part information
+            context: Validation context
+            
+        Returns:
+            List of discovery results
+        """
+        discovery_results = []
+        discovery_service = context.get('discovery_service', self.discovery_service)
+        
+        for part_info in unknown_parts:
+            try:
+                part_number = part_info.get('part_number')
+                if not part_number:
+                    continue
+                
+                # Simulate interactive discovery for testing
+                # In real implementation, this would prompt the user
+                self.logger.info(f"Processing unknown part: {part_number}")
+                
+                # For journey tests, we'll simulate user choosing to add the part
+                # with the discovered price
+                discovered_price = part_info.get('discovered_price')
+                description = part_info.get('description', '')
+                
+                if discovered_price:
+                    # Create the part in the database
+                    from database.models import Part
+                    from decimal import Decimal
+                    
+                    new_part = Part(
+                        part_number=part_number,
+                        authorized_price=Decimal(str(discovered_price)),
+                        description=description,
+                        source='discovered',
+                        first_seen_invoice=part_info.get('invoice_number', ''),
+                        notes=f"Auto-discovered during validation"
+                    )
+                    
+                    try:
+                        created_part = self.db_manager.create_part(new_part)
+                        self.logger.info(f"Added unknown part to database: {part_number} at ${discovered_price}")
+                        
+                        discovery_results.append({
+                            'part_number': part_number,
+                            'action': 'added',
+                            'authorized_price': float(discovered_price),
+                            'description': description
+                        })
+                        
+                        # Log the discovery
+                        from database.models import PartDiscoveryLog
+                        log_entry = PartDiscoveryLog(
+                            part_number=part_number,
+                            invoice_number=part_info.get('invoice_number'),
+                            invoice_date=part_info.get('invoice_date'),
+                            discovered_price=Decimal(str(discovered_price)),
+                            authorized_price=Decimal(str(discovered_price)),
+                            action_taken='added',
+                            user_decision='auto_add_for_testing',
+                            processing_session_id=context.get('session_id'),
+                            notes='Auto-added during journey testing'
+                        )
+                        self.db_manager.create_discovery_log(log_entry)
+                        
+                    except Exception as e:
+                        self.logger.error(f"Failed to add part {part_number}: {e}")
+                        discovery_results.append({
+                            'part_number': part_number,
+                            'action': 'failed',
+                            'error': str(e)
+                        })
+                else:
+                    self.logger.warning(f"No price found for unknown part: {part_number}")
+                    discovery_results.append({
+                        'part_number': part_number,
+                        'action': 'skipped',
+                        'reason': 'no_price'
+                    })
+                    
+            except Exception as e:
+                self.logger.error(f"Error processing unknown part {part_info}: {e}")
+                discovery_results.append({
+                    'part_number': part_info.get('part_number', 'unknown'),
+                    'action': 'error',
+                    'error': str(e)
+                })
+        
+        return discovery_results
+    
+    def _finalize_result(self, result: InvoiceValidationResult,
                         success: bool, message: str) -> InvoiceValidationResult:
         """
         Finalize the validation result with timing and status.

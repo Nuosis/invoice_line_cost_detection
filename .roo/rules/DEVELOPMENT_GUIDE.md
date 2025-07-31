@@ -48,10 +48,7 @@ uv run invoice-checker discover --input /path/to/invoices
 
 ## Report Example
 
-| Invoice #   | Date       | Line Item | Rate | Qty | Validation Result | Issue Type | Description                |
-|-------------|------------|-----------|------|-----|-------------------|------------|----------------------------|
-| 5790256943  | 06/09/2025 | GS0448    | 0.345| 8   | FAIL              | RATE_HIGH  | SHIRT WORK LS BTN COTTON   |
-| ...         | ...        | ...       | ...  | ... | ...               | ...        | ...                        |
+see report_format_specifications
 
 ---
 

@@ -241,6 +241,10 @@ class ValidationConfiguration:
     how validation is performed. It extends the existing Configuration
     model with validation-specific settings.
     """
+    # Validation mode settings
+    validation_mode: str = 'parts_based'  # 'parts_based' or 'threshold_based'
+    threshold_value: Decimal = Decimal('0.30')  # For threshold-based validation
+    
     # Price validation settings
     price_tolerance: Decimal = Decimal('0.001')
     price_discrepancy_warning_threshold: Decimal = Decimal('1.00')
@@ -274,6 +278,8 @@ class ValidationConfiguration:
     def to_dict(self) -> Dict[str, Any]:
         """Convert configuration to dictionary for serialization."""
         return {
+            'validation_mode': self.validation_mode,
+            'threshold_value': float(self.threshold_value),
             'price_tolerance': float(self.price_tolerance),
             'price_discrepancy_warning_threshold': float(self.price_discrepancy_warning_threshold),
             'price_discrepancy_critical_threshold': float(self.price_discrepancy_critical_threshold),

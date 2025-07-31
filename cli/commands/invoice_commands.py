@@ -425,15 +425,21 @@ def _create_validation_config(validation_mode: str, threshold: Decimal,
     if validation_mode == 'threshold_based':
         # For threshold-based mode, create a simple configuration
         config = ValidationConfiguration()
+        config.validation_mode = 'threshold_based'
+        config.threshold_value = threshold
         config.price_discrepancy_warning_threshold = threshold
         config.price_discrepancy_critical_threshold = threshold * 2
+        # Disable parts-based features for threshold mode
+        config.interactive_discovery = False
+        config.batch_collect_unknown_parts = False
     else:
         # Use parts-based validation with database configuration
         config = ValidationConfiguration.from_database_config(db_manager)
-    
-    # Apply common settings
-    config.interactive_discovery = interactive
-    config.batch_collect_unknown_parts = collect_unknown
+        config.validation_mode = 'parts_based'
+        config.threshold_value = threshold  # Still store threshold for reference
+        # Apply common settings for parts-based mode
+        config.interactive_discovery = interactive
+        config.batch_collect_unknown_parts = collect_unknown
     
     return config
 
@@ -465,9 +471,16 @@ def _execute_validation_workflow(pdf_files: List[Path], config: ValidationConfig
         )
         validation_results = [validation_result]
         
-        # Generate report manually for single file
-        report_stats = workflow.report_generator.generate_anomaly_report(
-            validation_results, output_path, output_format
+        # Generate report manually for single file - create basic processing stats
+        processing_stats = {
+            'successfully_processed': 1,
+            'failed_processing': 0,
+            'total_processing_time': 0.0,
+            'average_processing_time': 0.0
+        }
+        
+        report_stats = workflow.report_generator.generate_all_reports(
+            validation_results, processing_stats, str(uuid.uuid4()), output_path.parent, str(output_path.parent)
         )
         
         # Get validation summary

@@ -99,10 +99,10 @@ class TestPathInputPrompts(unittest.TestCase):
             self.assertTrue(result_path.single_file_mode)
             
             # Verify original file is preserved
-            self.assertEqual(result_path.original_file, self.single_pdf)
+            self.assertEqual(result_path.original_file.resolve(), self.single_pdf.resolve())
             
             # Verify the path points to the parent directory
-            self.assertEqual(str(result_path), str(self.single_pdf.parent))
+            self.assertEqual(str(result_path.resolve()), str(self.single_pdf.parent.resolve()))
             
             # Verify we can access Path methods (delegation works)
             self.assertTrue(result_path.exists())
@@ -128,7 +128,7 @@ class TestPathInputPrompts(unittest.TestCase):
             self.assertNotIsInstance(result_path, PathWithMetadata)
             
             # Should point to the directory
-            self.assertEqual(result_path, self.test_invoices_dir)
+            self.assertEqual(result_path.resolve(), self.test_invoices_dir.resolve())
     
     def test_directory_input_returns_regular_path(self):
         """
@@ -146,7 +146,7 @@ class TestPathInputPrompts(unittest.TestCase):
             self.assertNotIsInstance(result_path, PathWithMetadata)
             
             # Should point to the directory
-            self.assertEqual(result_path, self.test_invoices_dir)
+            self.assertEqual(result_path.resolve(), self.test_invoices_dir.resolve())
     
     def test_path_with_spaces_and_quotes_handling(self):
         """
@@ -174,9 +174,11 @@ class TestPathInputPrompts(unittest.TestCase):
         for user_input in test_cases:
             with self.subTest(user_input=user_input):
                 with patch('click.prompt') as mock_prompt, \
+                     patch('click.confirm') as mock_confirm, \
                      patch('cli.prompts.prompt_for_choice') as mock_choice:
                     
                     mock_prompt.return_value = user_input
+                    mock_confirm.return_value = True  # User confirms to process single file
                     mock_choice.return_value = f"Process only this file ({spaced_pdf.name})"
                     
                     result_path = prompt_for_input_path()
@@ -184,7 +186,8 @@ class TestPathInputPrompts(unittest.TestCase):
                     # Should handle the path correctly
                     self.assertIsInstance(result_path, PathWithMetadata)
                     self.assertTrue(result_path.single_file_mode)
-                    self.assertEqual(result_path.original_file, spaced_pdf)
+                    # Use resolve() to handle symlinks consistently
+                    self.assertEqual(result_path.original_file.resolve(), spaced_pdf.resolve())
     
     def test_invalid_path_retry_flow(self):
         """
@@ -204,7 +207,7 @@ class TestPathInputPrompts(unittest.TestCase):
             # Should eventually succeed with valid path
             self.assertIsInstance(result_path, PathWithMetadata)
             self.assertTrue(result_path.single_file_mode)
-            self.assertEqual(result_path.original_file, self.single_pdf)
+            self.assertEqual(result_path.original_file.resolve(), self.single_pdf.resolve())
             
             # Should have prompted twice
             self.assertEqual(mock_prompt.call_count, 2)
@@ -239,7 +242,7 @@ class TestPathInputPrompts(unittest.TestCase):
             result_path = prompt_for_input_path()
             
             # Should return the directory path
-            self.assertEqual(result_path, self.empty_dir)
+            self.assertEqual(result_path.resolve(), self.empty_dir.resolve())
             self.assertIsInstance(result_path, Path)
             self.assertNotIsInstance(result_path, PathWithMetadata)
     
@@ -266,7 +269,7 @@ class TestPathInputPrompts(unittest.TestCase):
                 
                 # Should eventually succeed with PDF file
                 self.assertIsInstance(result_path, PathWithMetadata)
-                self.assertEqual(result_path.original_file, self.single_pdf)
+                self.assertEqual(result_path.original_file.resolve(), self.single_pdf.resolve())
     
     def test_pathwithmetadata_attribute_access(self):
         """
@@ -313,7 +316,7 @@ class TestPathInputPrompts(unittest.TestCase):
             self.assertTrue(result_path.exists())
             self.assertTrue(result_path.is_dir())
             self.assertEqual(result_path.name, self.test_invoices_dir.name)
-            self.assertEqual(result_path.parent, self.test_invoices_dir.parent)
+            self.assertEqual(result_path.parent.resolve(), self.test_invoices_dir.parent.resolve())
             
             # Test that glob works (important for PDF discovery)
             pdf_files = list(result_path.glob("*.pdf"))

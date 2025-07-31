@@ -147,7 +147,7 @@ class DatabaseManager:
         PRAGMA foreign_keys = ON;
 
         -- Create parts table
-        CREATE TABLE parts (
+        CREATE TABLE IF NOT EXISTS parts (
             part_number TEXT PRIMARY KEY,
             authorized_price DECIMAL(10,4) NOT NULL CHECK (authorized_price > 0),
             description TEXT,
@@ -161,7 +161,7 @@ class DatabaseManager:
         );
 
         -- Create config table
-        CREATE TABLE config (
+        CREATE TABLE IF NOT EXISTS config (
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL,
             data_type TEXT DEFAULT 'string' CHECK (data_type IN ('string', 'number', 'boolean', 'json')),
@@ -172,7 +172,7 @@ class DatabaseManager:
         );
 
         -- Create part discovery log table
-        CREATE TABLE part_discovery_log (
+        CREATE TABLE IF NOT EXISTS part_discovery_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             part_number TEXT NOT NULL,
             invoice_number TEXT,
@@ -187,17 +187,17 @@ class DatabaseManager:
         );
 
         -- Create indexes for performance
-        CREATE INDEX idx_parts_number ON parts(part_number);
-        CREATE INDEX idx_parts_active ON parts(is_active) WHERE is_active = 1;
-        CREATE INDEX idx_parts_category ON parts(category);
-        CREATE INDEX idx_config_category ON config(category);
-        CREATE INDEX idx_discovery_part ON part_discovery_log(part_number);
-        CREATE INDEX idx_discovery_invoice ON part_discovery_log(invoice_number);
-        CREATE INDEX idx_discovery_date ON part_discovery_log(discovery_date);
-        CREATE INDEX idx_discovery_session ON part_discovery_log(processing_session_id);
+        CREATE INDEX IF NOT EXISTS idx_parts_number ON parts(part_number);
+        CREATE INDEX IF NOT EXISTS idx_parts_active ON parts(is_active) WHERE is_active = 1;
+        CREATE INDEX IF NOT EXISTS idx_parts_category ON parts(category);
+        CREATE INDEX IF NOT EXISTS idx_config_category ON config(category);
+        CREATE INDEX IF NOT EXISTS idx_discovery_part ON part_discovery_log(part_number);
+        CREATE INDEX IF NOT EXISTS idx_discovery_invoice ON part_discovery_log(invoice_number);
+        CREATE INDEX IF NOT EXISTS idx_discovery_date ON part_discovery_log(discovery_date);
+        CREATE INDEX IF NOT EXISTS idx_discovery_session ON part_discovery_log(processing_session_id);
 
-        -- Insert initial configuration data
-        INSERT INTO config (key, value, data_type, description, category) VALUES
+        -- Insert initial configuration data (only if not exists)
+        INSERT OR IGNORE INTO config (key, value, data_type, description, category) VALUES
         ('validation_mode', 'parts_based', 'string', 'Validation mode: parts_based or threshold_based', 'validation'),
         ('default_output_format', 'csv', 'string', 'Default report output format', 'reporting'),
         ('interactive_discovery', 'true', 'boolean', 'Enable interactive part discovery during processing', 'discovery'),
@@ -208,6 +208,7 @@ class DatabaseManager:
         ('database_version', '1.0', 'string', 'Current database schema version', 'system');
 
         -- Create triggers to update last_updated timestamps
+        DROP TRIGGER IF EXISTS update_parts_timestamp;
         CREATE TRIGGER update_parts_timestamp
             AFTER UPDATE ON parts
             FOR EACH ROW
@@ -215,6 +216,7 @@ class DatabaseManager:
                 UPDATE parts SET last_updated = CURRENT_TIMESTAMP WHERE part_number = NEW.part_number;
             END;
 
+        DROP TRIGGER IF EXISTS update_config_timestamp;
         CREATE TRIGGER update_config_timestamp
             AFTER UPDATE ON config
             FOR EACH ROW
@@ -223,12 +225,14 @@ class DatabaseManager:
             END;
 
         -- Create view for active parts (commonly used query)
+        DROP VIEW IF EXISTS active_parts;
         CREATE VIEW active_parts AS
         SELECT part_number, authorized_price, description, category, source, first_seen_invoice, created_date, last_updated, notes
         FROM parts
         WHERE is_active = 1;
 
         -- Create view for recent discoveries (last 30 days)
+        DROP VIEW IF EXISTS recent_discoveries;
         CREATE VIEW recent_discoveries AS
         SELECT pdl.*, p.description, p.authorized_price as current_authorized_price
         FROM part_discovery_log pdl

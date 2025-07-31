@@ -256,73 +256,88 @@ class TestValidationModeSelection(unittest.TestCase):
     def test_complete_validation_mode_workflow_in_interactive_processing(self):
         """
         Test complete validation mode selection within interactive processing workflow.
+        Uses REAL validation engine, REAL PDF processing, REAL database operations.
+        Only mocks user input.
         """
         ctx = CLIContext()
         ctx.database_path = str(self.db_path)
         
-        with patch('cli.prompts.prompt_for_input_path') as mock_input_path, \
-             patch('cli.prompts.prompt_for_output_path') as mock_output_path, \
-             patch('cli.prompts.prompt_for_validation_mode') as mock_validation_mode, \
-             patch('processing.pdf_processor.PDFProcessor.extract_line_items') as mock_extract, \
-             patch('click.echo') as mock_echo:
+        # Only mock user input - let everything else run real
+        with patch('click.prompt') as mock_prompt, \
+             patch('cli.prompts.prompt_for_choice') as mock_choice:
             
-            # Set up input simulation
-            from cli.prompts import PathWithMetadata
-            mock_input_path.return_value = PathWithMetadata(
-                self.real_invoices_dir,
-                single_file_mode=True,
-                original_file=self.target_pdf
-            )
-            mock_output_path.return_value = self.output_dir / "validation_mode_test.csv"
-            mock_validation_mode.return_value = "parts_based"
-            mock_extract.return_value = []
+            # Simulate user input sequence
+            mock_prompt.side_effect = [
+                str(self.target_pdf),           # User provides PDF path
+                str(self.output_dir / "parts_validation_test.txt"),  # Output path
+            ]
             
-            # Run the interactive processing
+            mock_choice.side_effect = [
+                f"Process only this file ({self.target_pdf.name})",  # File processing choice
+                "TXT (plain text)",                                  # Output format
+                "Parts-based validation (recommended)",              # Validation mode
+                "n"                                                  # No interactive discovery
+            ]
+            
+            # Run the interactive processing with REAL system components
             run_interactive_processing(ctx, preset=None, save_preset=False)
             
-            # Verify validation mode was requested
-            mock_validation_mode.assert_called_once()
+            # Verify actual report was generated
+            report_path = self.output_dir / "parts_validation_test.txt"
+            self.assertTrue(report_path.exists(), "Report file should be generated")
             
-            # Verify processing completed
-            mock_extract.assert_called_once()
+            # Verify report contains parts-based validation results
+            if report_path.exists():
+                report_content = report_path.read_text()
+                # Should contain validation results (even if no issues found)
+                self.assertGreater(len(report_content.strip()), 0, "Report should contain content")
     
     def test_threshold_based_validation_with_threshold_entry(self):
         """
         Test threshold-based validation workflow including threshold value entry.
+        Uses REAL validation engine - this test would have caught the original bug!
+        Only mocks user input.
         """
         ctx = CLIContext()
         ctx.database_path = str(self.db_path)
         
-        with patch('cli.prompts.prompt_for_input_path') as mock_input_path, \
-             patch('cli.prompts.prompt_for_output_path') as mock_output_path, \
-             patch('cli.prompts.prompt_for_validation_mode') as mock_validation_mode, \
-             patch('cli.prompts.prompt_for_threshold_value') as mock_threshold, \
-             patch('processing.pdf_processor.PDFProcessor.extract_line_items') as mock_extract, \
-             patch('click.echo') as mock_echo:
+        # Only mock user input - let everything else run real
+        with patch('click.prompt') as mock_prompt, \
+             patch('cli.prompts.prompt_for_choice') as mock_choice:
             
-            # Set up input simulation
-            from cli.prompts import PathWithMetadata
-            mock_input_path.return_value = PathWithMetadata(
-                self.real_invoices_dir,
-                single_file_mode=True,
-                original_file=self.target_pdf
-            )
-            mock_output_path.return_value = self.output_dir / "threshold_validation_test.csv"
-            mock_validation_mode.return_value = "threshold_based"
-            mock_threshold.return_value = Decimal("30.00")
-            mock_extract.return_value = []
+            # Simulate user input sequence for threshold-based validation
+            mock_prompt.side_effect = [
+                str(self.target_pdf),           # User provides PDF path
+                str(self.output_dir / "threshold_validation_test.txt"),  # Output path
+                "0.30"                          # Threshold value
+            ]
             
-            # Run the interactive processing
+            mock_choice.side_effect = [
+                f"Process only this file ({self.target_pdf.name})",  # File processing choice
+                "TXT (plain text)",                                  # Output format
+                "Threshold-based validation",                        # Validation mode
+                "n"                                                  # No interactive discovery
+            ]
+            
+            # Run the interactive processing with REAL validation engine
+            # This would have failed with the original bug due to parts_lookup running
             run_interactive_processing(ctx, preset=None, save_preset=False)
             
-            # Verify validation mode was requested
-            mock_validation_mode.assert_called_once()
+            # Verify actual report was generated
+            report_path = self.output_dir / "threshold_validation_test.txt"
+            self.assertTrue(report_path.exists(), "Report file should be generated")
             
-            # Verify threshold value was requested
-            mock_threshold.assert_called_once()
-            
-            # Verify processing completed
-            mock_extract.assert_called_once()
+            # Verify report contains threshold-based validation results
+            if report_path.exists():
+                report_content = report_path.read_text()
+                self.assertGreater(len(report_content.strip()), 0, "Report should contain content")
+                
+                # Should NOT contain parts lookup errors (the original bug)
+                self.assertNotIn("parts_lookup", report_content.lower())
+                self.assertNotIn("critical errors in parts_lookup", report_content.lower())
+                
+                # Should contain threshold-related content
+                self.assertIn("0.30", report_content)  # Threshold value should appear
     
     def test_validation_mode_default_selection(self):
         """
@@ -475,35 +490,86 @@ class TestValidationModeSelection(unittest.TestCase):
             mock_validation_mode.assert_called_once()
             mock_threshold.assert_called_once()
     
+    def test_validation_engine_strategy_selection_based_on_mode(self):
+        """
+        Test that validation engine initializes correct strategies based on mode.
+        This test validates the core fix for the threshold validation bug.
+        """
+        from processing.validation_engine import ValidationEngine
+        from processing.validation_models import ValidationConfiguration
+        
+        # Test threshold mode - should NOT initialize parts_lookup strategy
+        threshold_config = ValidationConfiguration()
+        threshold_config.validation_mode = 'threshold_based'
+        threshold_config.threshold_value = Decimal("0.30")
+        
+        threshold_engine = ValidationEngine(threshold_config, self.db_manager)
+        
+        # Verify correct strategies were initialized for threshold mode
+        strategy_names = list(threshold_engine.validators.keys())
+        self.assertIn('threshold_validation', strategy_names, "Should have threshold validation strategy")
+        self.assertNotIn('parts_lookup', strategy_names, "Should NOT have parts lookup strategy")
+        self.assertNotIn('price_comparison', strategy_names, "Should NOT have price comparison strategy")
+        
+        # Test parts mode - should initialize parts_lookup strategy
+        parts_config = ValidationConfiguration()
+        parts_config.validation_mode = 'parts_based'
+        
+        parts_engine = ValidationEngine(parts_config, self.db_manager)
+        
+        # Verify correct strategies were initialized for parts mode
+        strategy_names = list(parts_engine.validators.keys())
+        self.assertIn('parts_lookup', strategy_names, "Should have parts lookup strategy")
+        self.assertIn('price_comparison', strategy_names, "Should have price comparison strategy")
+        self.assertNotIn('threshold_validation', strategy_names, "Should NOT have threshold validation strategy")
+    
     def test_validation_mode_with_empty_parts_database(self):
         """
-        Test validation mode selection when parts database is empty.
+        Test threshold-based validation works with empty parts database.
+        This test validates that threshold mode doesn't depend on parts database.
         """
         # Create empty database
         empty_db_path = self.temp_dir / "empty_db.db"
         empty_db_manager = DatabaseManager(str(empty_db_path))
         empty_db_manager.initialize_database()
-        empty_db_manager.close()
+        # Don't add any parts - leave database empty
         
-        validation_modes = [
-            "Parts-based validation (recommended)",
-            "Threshold-based validation",
-            "Both validation methods"
-        ]
+        ctx = CLIContext()
+        ctx.database_path = str(empty_db_path)
         
+        # Only mock user input - let everything else run real
         with patch('click.prompt') as mock_prompt, \
-             patch('click.echo') as mock_echo:
+             patch('cli.prompts.prompt_for_choice') as mock_choice:
             
-            # User selects parts-based validation despite empty database
-            mock_prompt.return_value = "1"
+            # User selects threshold-based validation with empty database
+            mock_prompt.side_effect = [
+                str(self.target_pdf),           # User provides PDF path
+                str(self.output_dir / "empty_db_threshold_test.txt"),  # Output path
+                "0.30"                          # Threshold value
+            ]
             
-            result = prompt_for_choice("Select validation mode:", validation_modes)
+            mock_choice.side_effect = [
+                f"Process only this file ({self.target_pdf.name})",  # File processing choice
+                "TXT (plain text)",                                  # Output format
+                "Threshold-based validation",                        # Validation mode
+                "n"                                                  # No interactive discovery
+            ]
             
-            # Should still allow parts-based selection
-            self.assertEqual(result, "Parts-based validation (recommended)")
+            # This should work fine with empty database in threshold mode
+            run_interactive_processing(ctx, preset=None, save_preset=False)
             
-            # Should potentially warn about empty database
-            # (Implementation-specific behavior)
+            # Verify report was generated successfully
+            report_path = self.output_dir / "empty_db_threshold_test.txt"
+            self.assertTrue(report_path.exists(), "Report should be generated even with empty database")
+            
+            if report_path.exists():
+                report_content = report_path.read_text()
+                # Should not contain parts lookup errors
+                self.assertNotIn("parts_lookup", report_content.lower())
+                self.assertNotIn("critical errors", report_content.lower())
+        
+        # Clean up
+        empty_db_manager.close()
 
 
 if __name__ == '__main__':

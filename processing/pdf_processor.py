@@ -60,14 +60,14 @@ class PDFProcessor:
     ]
     
     # Line item parsing patterns based on actual invoice formats
-    # Primary pattern for most line items
+    # Primary pattern for most line items - improved to handle color codes and mixed case names
     LINE_ITEM_PATTERN = re.compile(
-        r'(\d+)\s+'  # Wearer number
-        r'([A-Z\s\-\.]+?)\s+'  # Wearer name (non-greedy, includes hyphens and periods)
-        r'([A-Z0-9]+)\s+'  # Item code
-        r'(.+?)\s+'  # Description (non-greedy)
-        r'([A-Z0-9X]+)\s+'  # Size (includes X for sizes like 1XLR, 2XLL)
-        r'(Rent|Ruin\s+charge|PREP\s+CHARGE|Loss\s+Charge)\s+'  # Type
+        r'(\d+)\s+'  # Wearer number (1-3 digits)
+        r'([A-Z][A-Za-z\s\-\.]+?)\s+'  # Wearer name (starts with capital, allows mixed case)
+        r'([A-Z0-9]+(?:NAVY|NVOT|CHAR|LGOT|SCGR|BLAK|WHIT|SLVN|GREY)?)\s+'  # Item code with color suffixes
+        r'(.+?)\s+'  # Description (non-greedy to avoid capturing size)
+        r'([A-Z0-9X]+|X)\s+'  # Size (handles 1XLR, 2XLL, 40X28, X, etc.)
+        r'(Rent|Loss\s+Charge|Ruin\s+charge|PREP\s+CHARGE|X)\s+'  # Type (added Loss Charge and X)
         r'(\d+)\s+'  # Quantity
         r'(\d+\.\d{2,3})\s+'  # Rate (2-3 decimal places)
         r'(\d+\.\d{2})'  # Total
@@ -76,21 +76,21 @@ class PDFProcessor:
     # Alternative pattern for special charges (NAME EMBL CHARGE, PREP CHARGE, etc.)
     SPECIAL_CHARGE_PATTERN = re.compile(
         r'(\d+)\s+'  # Wearer number
-        r'([A-Z\s\-\.]+?)\s+'  # Wearer name
+        r'([A-Z][A-Za-z\s\-\.]+?)\s+'  # Wearer name (improved for mixed case)
         r'(NAME\s+EMBL\s+CHARGE|PREP\s+CHARGE)\s+'  # Special charge type
         r'(\d+)\s+'  # Quantity
         r'(\d+\.\d{2,3})\s+'  # Rate
         r'(\d+\.\d{2})'  # Total
     )
     
-    # Pattern for non-garment items (mats, towels, etc.)
+    # Pattern for non-garment items (mats, towels, etc.) - improved with color codes
     NON_GARMENT_PATTERN = re.compile(
-        r'([A-Z0-9]+)\s+'  # Item code
+        r'^([A-Z0-9]+(?:NAVY|NVOT|CHAR|LGOT|SCGR|BLAK|WHIT|SLVN|GREY)?)\s+'  # Item code with anchoring
         r'(.+?)\s+'  # Description
         r'(Rent|X)\s+'  # Type
         r'(\d+)\s+'  # Quantity
         r'(\d+\.\d{2,3})\s+'  # Rate
-        r'(\d+\.\d{2})'  # Total
+        r'(\d+\.\d{2})$'  # Total (end of line anchor)
     )
     
     # Format section patterns

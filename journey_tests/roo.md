@@ -2,9 +2,28 @@
 
 ## Core Testing Philosophy
 
-**Journey tests validate the complete user experience from CLI prompt to system response.**
+**Journey tests validate the complete user experience from CLI prompt to system response, with emphasis on data validation integrity.**
 
-These tests fill the critical gap between unit tests (isolated functions) and e2e tests (complete workflows) by focusing specifically on **user interaction flows** and **CLI interface behavior**.
+These tests fill the critical gap between unit tests (isolated functions) and e2e tests (complete workflows) by focusing specifically on **user interaction flows**, **CLI interface behavior**, and **data validation correctness**.
+
+VERY IMPORTANT:
+**exit code 0 with no output means the tests are hanging and waiting for user input, not actually passing**
+
+## Critical Role of Data Validation
+
+**Journey tests MUST use realistic, valid data that matches actual system requirements.**
+
+### Why Data Validation is Essential
+- **Real-world accuracy**: Tests must reflect actual user scenarios with valid data
+- **System integrity**: Invalid test data can mask real validation engine issues
+- **Bug detection**: Proper data validation helps identify legitimate system problems
+- **User experience**: Tests should validate that users can successfully process their actual data
+
+### Data Validation Requirements
+- **Use actual PDF content**: Test data should match real invoice structures and part numbers
+- **Include all variants**: Parts with color suffixes (e.g., "GS0448NAVY" not just "GS0448")
+- **Validate completeness**: Ensure test databases contain all parts referenced in test PDFs
+- **Test edge cases**: Include scenarios with missing parts, invalid formats, etc.
 
 ## Quick Start
 
@@ -38,27 +57,44 @@ Real invoice PDFs for testing are available at `~/docs/invoices/`
 - **Mock user selections**: `@patch('cli.prompts.prompt_for_choice')`
 
 ### ❌ DO NOT MOCK SYSTEM COMPONENTS
-- **Database operations**: Use real SQLite databases
+- **Database operations**: Use real SQLite databases with VALID test data
 - **File system**: Use real files and directories
-- **PDF processing**: Use real PDF processing
-- **Validation logic**: Use real validation engines
+- **PDF processing**: Use real PDF processing with ACTUAL invoice files
+- **Validation logic**: Use real validation engines with COMPLETE parts databases
 - **CLI commands**: Use real command implementations
 
 ### Critical Distinction
 ```python
-# ❌ BAD: Over-mocking undermines validity
+# ❌ BAD: Over-mocking undermines validity AND data validation
 @patch('database.DatabaseManager')
 @patch('processing.PDFProcessor')
 @patch('click.prompt')
 def test_user_journey():
-    # This doesn't test real interactions!
+    # This doesn't test real interactions OR data validation!
 
-# ✅ GOOD: Strategic mocking preserves validity
+# ✅ GOOD: Strategic mocking preserves validity AND tests real data
 @patch('click.prompt')  # Only mock what user types
 @patch('click.confirm') # Only mock user decisions
 def test_user_journey():
-    # Real database, real processing, real validation
+    # Real database with COMPLETE parts data
+    # Real processing with ACTUAL PDF files
+    # Real validation with PROPER test setup
     # Only simulated: user keyboard input
+```
+
+### Data Validation Testing Pattern
+```python
+def setUp(self):
+    # Create test database with COMPLETE parts data
+    self.db_manager.add_part("GP0171NAVY", "PANT WORK DURAPRES COTTON", 25.50)
+    self.db_manager.add_part("GS0448NAVY", "SHIRT WORK LS BTN COTTON", 18.75)
+    self.db_manager.add_part("GS3125NAVY", "SHIRT SCRUB USS", 22.00)
+    self.db_manager.add_part("GP1390NAVY", "PANT SCRUB COTTON", 24.25)
+    
+    # Use ACTUAL PDF file that contains these exact parts
+    self.test_pdf = Path("docs/invoices/5790265786.pdf")
+    
+    # Validation engine will find all parts and process successfully
 ```
 
 ---
