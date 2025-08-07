@@ -82,6 +82,7 @@ If you prefer manual setup:
 
 2. **Install dependencies using UV**:
    ```bash
+   source .venv/bin/activate
    uv sync
    ```
 
