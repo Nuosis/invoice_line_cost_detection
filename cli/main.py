@@ -81,16 +81,554 @@ def interactive_process(ctx):
     Interactive processing mode for non-technical users.
     
     This is the default mode when no arguments are provided.
-    Guides users through the invoice processing workflow.
+    Provides a main menu with all system functions.
     """
     try:
-        from cli.commands.invoice_commands import run_interactive_processing
-        run_interactive_processing(ctx)
+        run_main_interactive_menu(ctx)
     except Exception as e:
         logger = logging.getLogger(__name__)
-        logger.error(f"Interactive processing failed: {e}")
+        logger.error(f"Interactive mode failed: {e}")
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
+
+
+def run_main_interactive_menu(ctx):
+    """
+    Run the main interactive menu system.
+    
+    This function provides a comprehensive menu-driven interface for all
+    system operations, making it easy for non-technical users to access
+    all functionality.
+    
+    Args:
+        ctx: CLI context containing database manager and other resources
+    """
+    from cli.formatters import print_success, print_warning, print_error, print_info
+    from cli.prompts import prompt_for_choice
+    from cli.exceptions import UserCancelledError
+    
+    # Show welcome message
+    click.echo("\n" + "="*75)
+    click.echo("           INVOICE RATE DETECTION SYSTEM - MAIN MENU")
+    click.echo("="*75)
+    click.echo("Welcome to the Invoice Rate Detection System!")
+    click.echo("This tool helps you manage parts databases and validate invoice pricing.")
+    click.echo("")
+    
+    while True:
+        try:
+            # Display main menu
+            click.echo("╔═════════════════════════════════════════════════════════════════════════════════╗")
+            click.echo("║                                   MAIN MENU                                     ║")
+            click.echo("╚═════════════════════════════════════════════════════════════════════════════════╝")
+            click.echo("")
+            
+            menu_options = [
+                "Process Invoices    - Run interactive invoice processing with discovery",
+                "Manage Parts        - Add, update, import/export parts database",
+                "Manage Database     - Backup, restore, and maintain database",
+                "Setup               - Install, update, and configure system",
+                "Help                - Show help and documentation",
+                "Exit                - Exit the application"
+            ]
+            
+            for i, option in enumerate(menu_options, 1):
+                click.echo(f"{i}) {option}")
+            
+            click.echo("")
+            choice = prompt_for_choice("Select option (1-6)", [str(i) for i in range(1, 7)])
+            choice_num = int(choice)
+            
+            if choice_num == 1:
+                # Process Invoices
+                print_info("[INFO] Starting invoice processing...")
+                from cli.commands.invoice_commands import run_interactive_processing
+                run_interactive_processing(ctx)
+                
+            elif choice_num == 2:
+                # Manage Parts
+                print_info("[INFO] Starting parts management...")
+                _run_interactive_parts_management(ctx)
+                
+            elif choice_num == 3:
+                # Manage Database
+                print_info("[INFO] Starting database management...")
+                from cli.commands.database_commands import run_interactive_database_management
+                run_interactive_database_management(ctx)
+                
+            elif choice_num == 4:
+                # Setup
+                print_info("[INFO] Starting system setup...")
+                _run_interactive_setup(ctx)
+                
+            elif choice_num == 5:
+                # Help
+                _show_help_menu(ctx)
+                
+            elif choice_num == 6:
+                # Exit
+                print_info("Thank you for using the Invoice Rate Detection System!")
+                break
+            else:
+                print_error("Invalid option. Please select 1-6.")
+                continue
+                
+        except UserCancelledError:
+            print_info("Operation cancelled by user.")
+            if click.confirm("Return to main menu?", default=True):
+                continue
+            else:
+                break
+        except KeyboardInterrupt:
+            print_info("\nOperation cancelled by user.")
+            if click.confirm("Return to main menu?", default=True):
+                continue
+            else:
+                break
+        except Exception as e:
+            print_error(f"An error occurred: {e}")
+            if not click.confirm("Continue to main menu?", default=True):
+                break
+
+
+def _run_interactive_parts_management(ctx):
+    """Interactive parts management workflow."""
+    from cli.prompts import prompt_for_choice
+    from cli.exceptions import UserCancelledError
+    from cli.formatters import print_info, print_error
+    
+    while True:
+        try:
+            click.echo("\n" + "="*75)
+            click.echo("                           PARTS MANAGEMENT")
+            click.echo("="*75)
+            
+            parts_options = [
+                "List parts",
+                "Add new part",
+                "Update existing part",
+                "Import parts from CSV",
+                "Export parts to CSV",
+                "Search parts",
+                "Return to main menu"
+            ]
+            
+            print_info("Parts Management Options:")
+            for i, option in enumerate(parts_options, 1):
+                click.echo(f"{i}) {option}")
+            
+            choice = prompt_for_choice("Select option (1-7)", [str(i) for i in range(1, 8)])
+            choice_num = int(choice)
+            
+            if choice_num == 1:
+                # List parts
+                from cli.commands.parts_commands import _interactive_list_parts
+                _interactive_list_parts(ctx)
+            elif choice_num == 2:
+                # Add new part
+                from cli.commands.parts_commands import _interactive_add_part
+                _interactive_add_part(ctx)
+            elif choice_num == 3:
+                # Update existing part
+                from cli.commands.parts_commands import _interactive_update_part
+                _interactive_update_part(ctx)
+            elif choice_num == 4:
+                # Import parts from CSV
+                from cli.commands.parts_commands import _interactive_import_parts
+                _interactive_import_parts(ctx)
+            elif choice_num == 5:
+                # Export parts to CSV
+                from cli.commands.parts_commands import _interactive_export_parts
+                _interactive_export_parts(ctx)
+            elif choice_num == 6:
+                # Search parts
+                from cli.commands.parts_commands import _interactive_search_parts
+                _interactive_search_parts(ctx)
+            elif choice_num == 7:
+                # Return to main menu
+                print_info("Returning to main menu...")
+                break
+            else:
+                print_error("Invalid option. Please select 1-7.")
+                continue
+                
+        except UserCancelledError:
+            print_info("Parts management cancelled by user.")
+            break
+        except Exception as e:
+            print_error(f"An error occurred: {e}")
+            if not click.confirm("Continue with parts management?", default=True):
+                break
+
+
+def _run_interactive_setup(ctx):
+    """Interactive system setup workflow."""
+    from cli.prompts import prompt_for_choice
+    from cli.exceptions import UserCancelledError
+    from cli.formatters import print_info, print_error, print_success
+    
+    while True:
+        try:
+            click.echo("\n" + "="*75)
+            click.echo("                           SYSTEM SETUP")
+            click.echo("="*75)
+            
+            setup_options = [
+                "View system status",
+                "Configure settings",
+                "Initialize database",
+                "Check dependencies",
+                "View logs",
+                "Return to main menu"
+            ]
+            
+            print_info("Setup Options:")
+            for i, option in enumerate(setup_options, 1):
+                click.echo(f"{i}) {option}")
+            
+            choice = prompt_for_choice("Select option (1-6)", [str(i) for i in range(1, 7)])
+            choice_num = int(choice)
+            
+            if choice_num == 1:
+                # View system status
+                print_info("System Status:")
+                ctx.invoke(status, format='table')
+            elif choice_num == 2:
+                # Configure settings
+                from cli.commands.config_commands import run_interactive_config_management
+                run_interactive_config_management(ctx)
+            elif choice_num == 3:
+                # Initialize database
+                print_info("Initializing database...")
+                db_manager = ctx.get_db_manager()
+                db_manager.initialize_database()
+                print_success("Database initialized successfully!")
+            elif choice_num == 4:
+                # Check dependencies
+                print_info("Checking system dependencies...")
+                _check_system_dependencies()
+            elif choice_num == 5:
+                # View logs
+                print_info("Recent system activity:")
+                _show_recent_logs(ctx)
+            elif choice_num == 6:
+                # Return to main menu
+                print_info("Returning to main menu...")
+                break
+            else:
+                print_error("Invalid option. Please select 1-6.")
+                continue
+                
+        except UserCancelledError:
+            print_info("Setup cancelled by user.")
+            break
+        except Exception as e:
+            print_error(f"An error occurred: {e}")
+            if not click.confirm("Continue with setup?", default=True):
+                break
+
+
+def _show_help_menu(ctx):
+    """Show help and documentation menu."""
+    from cli.formatters import print_info
+    
+    click.echo("\n" + "="*75)
+    click.echo("                           HELP & DOCUMENTATION")
+    click.echo("="*75)
+    
+    print_info("Available Help Topics:")
+    click.echo("")
+    click.echo("1. Getting Started Guide")
+    click.echo("   - How to set up and use the system")
+    click.echo("   - Basic workflow for processing invoices")
+    click.echo("")
+    click.echo("2. Parts Management")
+    click.echo("   - Adding and managing parts in the database")
+    click.echo("   - Importing/exporting parts data")
+    click.echo("")
+    click.echo("3. Database Management")
+    click.echo("   - Creating backups and restoring data")
+    click.echo("   - Database maintenance and optimization")
+    click.echo("")
+    click.echo("4. Troubleshooting")
+    click.echo("   - Common issues and solutions")
+    click.echo("   - Error messages and their meanings")
+    click.echo("")
+    click.echo("5. Command Reference")
+    click.echo("   - Complete list of CLI commands")
+    click.echo("   - Command options and examples")
+    click.echo("")
+    
+    help_choice = click.prompt(
+        "Select help topic (1-5) or press Enter to return",
+        default="",
+        type=str
+    )
+    
+    if help_choice == "1":
+        _show_getting_started_guide()
+    elif help_choice == "2":
+        _show_parts_management_help()
+    elif help_choice == "3":
+        _show_database_management_help()
+    elif help_choice == "4":
+        _show_troubleshooting_help()
+    elif help_choice == "5":
+        _show_command_reference()
+    else:
+        print_info("Returning to main menu...")
+
+
+def _check_system_dependencies():
+    """Check system dependencies and requirements."""
+    from cli.formatters import print_success, print_warning, print_error, print_info
+    import sys
+    import platform
+    
+    print_info("Checking system dependencies...")
+    click.echo("")
+    
+    # Check Python version
+    python_version = sys.version_info
+    if python_version >= (3, 8):
+        print_success(f"✓ Python {python_version.major}.{python_version.minor}.{python_version.micro} (OK)")
+    else:
+        print_error(f"✗ Python {python_version.major}.{python_version.minor}.{python_version.micro} (Requires 3.8+)")
+    
+    # Check platform
+    system = platform.system()
+    print_info(f"Platform: {system} {platform.release()}")
+    
+    # Check required packages
+    required_packages = [
+        'click', 'pdfplumber', 'pathlib', 'sqlite3', 'decimal'
+    ]
+    
+    for package in required_packages:
+        try:
+            __import__(package)
+            print_success(f"✓ {package} (Available)")
+        except ImportError:
+            print_error(f"✗ {package} (Missing)")
+    
+    click.echo("")
+    print_info("Dependency check complete.")
+
+
+def _show_recent_logs(ctx):
+    """Show recent system logs and activity."""
+    from cli.formatters import print_info, format_table
+    
+    try:
+        db_manager = ctx.get_db_manager()
+        
+        # Get recent discovery logs
+        recent_logs = db_manager.get_discovery_logs(limit=10)
+        
+        if recent_logs:
+            print_info("Recent Discovery Activity:")
+            log_data = []
+            for log in recent_logs:
+                log_data.append({
+                    'Date': log.discovery_date.strftime('%Y-%m-%d %H:%M') if log.discovery_date else 'Unknown',
+                    'Part': log.part_number,
+                    'Action': log.action_taken,
+                    'Invoice': log.invoice_number or 'N/A'
+                })
+            
+            click.echo(format_table(log_data))
+        else:
+            print_info("No recent activity found.")
+            
+    except Exception as e:
+        print_info(f"Could not retrieve logs: {e}")
+
+
+def _show_getting_started_guide():
+    """Show getting started guide."""
+    click.echo("\n" + "="*75)
+    click.echo("                           GETTING STARTED GUIDE")
+    click.echo("="*75)
+    click.echo("""
+WELCOME TO THE INVOICE RATE DETECTION SYSTEM
+
+This system helps you validate invoice pricing by comparing line items
+against your master parts database.
+
+BASIC WORKFLOW:
+1. Set up your parts database with expected prices
+2. Process invoices to detect pricing anomalies
+3. Review generated reports for overcharges
+4. Add new parts discovered during processing
+
+FIRST TIME SETUP:
+1. Go to 'Manage Parts' to add your initial parts
+2. Or import parts from a CSV file
+3. Process a test invoice to verify everything works
+4. Review the generated report
+
+TIPS:
+- Keep your parts database up to date
+- Create regular backups of your database
+- Use interactive discovery to learn about new parts
+- Check the troubleshooting section if you encounter issues
+
+Press Enter to continue...
+""")
+    input()
+
+
+def _show_parts_management_help():
+    """Show parts management help."""
+    click.echo("\n" + "="*75)
+    click.echo("                           PARTS MANAGEMENT HELP")
+    click.echo("="*75)
+    click.echo("""
+MANAGING YOUR PARTS DATABASE
+
+The parts database is the heart of the system. It contains:
+- Part numbers and descriptions
+- Authorized/expected prices
+- Categories and other metadata
+
+ADDING PARTS:
+- Use 'Add new part' for individual parts
+- Use 'Import from CSV' for bulk additions
+- Parts are automatically discovered during invoice processing
+
+CSV IMPORT FORMAT:
+part_number,authorized_price,description,category
+GP0171NAVY,15.50,"Navy Work Pants",Clothing
+GS0448,12.75,"Work Shirt Long Sleeve",Clothing
+
+BEST PRACTICES:
+- Keep part numbers consistent
+- Update prices regularly
+- Use meaningful descriptions
+- Organize with categories
+- Export backups regularly
+
+Press Enter to continue...
+""")
+    input()
+
+
+def _show_database_management_help():
+    """Show database management help."""
+    click.echo("\n" + "="*75)
+    click.echo("                           DATABASE MANAGEMENT HELP")
+    click.echo("="*75)
+    click.echo("""
+DATABASE BACKUP AND MAINTENANCE
+
+Regular maintenance keeps your system running smoothly:
+
+BACKUP OPERATIONS:
+- Create backup: Save current database state
+- Restore from backup: Replace database with backup
+- View backup history: See available backups
+
+MAINTENANCE TASKS:
+- Vacuum database: Reclaim unused space
+- Clean up logs: Remove old discovery entries
+- Verify integrity: Check for database corruption
+
+RESET DATABASE:
+- Completely erases all data
+- Creates backup before reset
+- Option to keep configuration settings
+- Cannot be undone - use with caution!
+
+RECOMMENDED SCHEDULE:
+- Daily: Automatic backups during processing
+- Weekly: Manual backup before major changes
+- Monthly: Database maintenance and cleanup
+- As needed: Restore from backup if issues occur
+
+Press Enter to continue...
+""")
+    input()
+
+
+def _show_troubleshooting_help():
+    """Show troubleshooting help."""
+    click.echo("\n" + "="*75)
+    click.echo("                           TROUBLESHOOTING HELP")
+    click.echo("="*75)
+    click.echo("""
+COMMON ISSUES AND SOLUTIONS
+
+PROBLEM: "Database locked" error
+SOLUTION: Close other instances of the application
+
+PROBLEM: "No PDF files found"
+SOLUTION: Check file path and ensure PDFs are in the directory
+
+PROBLEM: "Part not found" during processing
+SOLUTION: Add the part to your database or use discovery mode
+
+PROBLEM: Reports show no anomalies when expected
+SOLUTION: Check part prices in database, verify validation mode
+
+PROBLEM: Cannot import CSV file
+SOLUTION: Check CSV format, ensure required columns exist
+
+PROBLEM: Application crashes or freezes
+SOLUTION: Check system requirements, restart application
+
+GETTING HELP:
+- Check the logs for detailed error messages
+- Use 'View system status' to check system health
+- Ensure all dependencies are installed
+- Try processing a simple test file first
+
+If problems persist, check the documentation or contact support.
+
+Press Enter to continue...
+""")
+    input()
+
+
+def _show_command_reference():
+    """Show command reference."""
+    click.echo("\n" + "="*75)
+    click.echo("                           COMMAND REFERENCE")
+    click.echo("="*75)
+    click.echo("""
+COMMAND LINE INTERFACE REFERENCE
+
+INVOICE PROCESSING:
+  invoice-checker process <path>           Process invoices
+  invoice-checker process --interactive    Interactive processing
+  invoice-checker collect-unknowns <path> Collect unknown parts
+
+PARTS MANAGEMENT:
+  invoice-checker parts list               List all parts
+  invoice-checker parts add <part> <price> Add new part
+  invoice-checker parts import <csv>       Import from CSV
+  invoice-checker parts export <csv>       Export to CSV
+
+DATABASE MANAGEMENT:
+  invoice-checker database backup          Create backup
+  invoice-checker database restore <file>  Restore from backup
+  invoice-checker database maintenance     Run maintenance
+  invoice-checker database reset           Reset database
+  invoice-checker database interactive     Interactive management
+
+SYSTEM COMMANDS:
+  invoice-checker status                   Show system status
+  invoice-checker version                  Show version info
+  invoice-checker --help                   Show help
+
+INTERACTIVE MODE:
+  invoice-checker                          Start interactive mode
+  
+For detailed help on any command, use:
+  invoice-checker <command> --help
+
+Press Enter to continue...
+""")
+    input()
 
 
 # Add command groups

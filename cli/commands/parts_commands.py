@@ -852,3 +852,204 @@ def _import_parts_batch(parts_data: List[Dict[str, Any]], db_manager,
             results['errors'] += 1
     
     return results
+
+
+# Interactive helper functions for main menu integration
+
+def _interactive_list_parts(ctx):
+    """Interactive parts listing workflow."""
+    from cli.prompts import prompt_for_choice
+    from cli.exceptions import UserCancelledError
+    
+    try:
+        print_info("Parts Listing Options:")
+        
+        # Get filter options
+        category = click.prompt("Filter by category (or press Enter for all)", default="", type=str)
+        if not category.strip():
+            category = None
+        
+        include_inactive = click.confirm("Include inactive parts?", default=False)
+        
+        # Get display options
+        format_choice = click.prompt(
+            "Output format [1=table, 2=csv, 3=json]",
+            type=click.IntRange(1, 3),
+            default=1
+        )
+        formats = ['table', 'csv', 'json']
+        format_type = formats[format_choice - 1]
+        
+        # Call the list command
+        ctx.invoke(list,
+                  category=category,
+                  active_only=not include_inactive,
+                  include_inactive=include_inactive,
+                  format=format_type,
+                  limit=None,
+                  offset=0,
+                  sort_by='part_number',
+                  order='asc')
+        
+    except UserCancelledError:
+        print_info("Parts listing cancelled.")
+    except Exception as e:
+        print_error(f"Failed to list parts: {e}")
+
+
+def _interactive_add_part(ctx):
+    """Interactive part addition workflow."""
+    try:
+        print_info("Add New Part:")
+        
+        # Get part details
+        part_number = click.prompt("Part number", type=str)
+        price = click.prompt("Authorized price", type=float)
+        description = click.prompt("Description (optional)", default="", type=str)
+        category = click.prompt("Category (optional)", default="", type=str)
+        notes = click.prompt("Notes (optional)", default="", type=str)
+        
+        # Call the add command
+        ctx.invoke(add,
+                  part_number=part_number,
+                  price=price,
+                  description=description or None,
+                  category=category or None,
+                  source='manual',
+                  notes=notes or None)
+        
+    except Exception as e:
+        print_error(f"Failed to add part: {e}")
+
+
+def _interactive_update_part(ctx):
+    """Interactive part update workflow."""
+    try:
+        print_info("Update Existing Part:")
+        
+        # Get part to update
+        part_number = click.prompt("Part number to update", type=str)
+        
+        # Get update options
+        print_info("Leave fields empty to keep current values:")
+        price = click.prompt("New authorized price (optional)", default="", type=str)
+        description = click.prompt("New description (optional)", default="", type=str)
+        category = click.prompt("New category (optional)", default="", type=str)
+        notes = click.prompt("New notes (optional)", default="", type=str)
+        
+        # Status change options
+        activate = click.confirm("Activate part?", default=False)
+        deactivate = click.confirm("Deactivate part?", default=False)
+        
+        # Call the update command
+        ctx.invoke(update,
+                  part_number=part_number,
+                  price=float(price) if price.strip() else None,
+                  description=description or None,
+                  category=category or None,
+                  notes=notes or None,
+                  activate=activate,
+                  deactivate=deactivate)
+        
+    except Exception as e:
+        print_error(f"Failed to update part: {e}")
+
+
+def _interactive_import_parts(ctx):
+    """Interactive parts import workflow."""
+    try:
+        print_info("Import Parts from CSV:")
+        
+        # Get file path
+        input_file = click.prompt("CSV file path", type=click.Path(exists=True))
+        
+        # Get import options
+        update_existing = click.confirm("Update existing parts?", default=False)
+        dry_run = click.confirm("Perform dry run first?", default=True)
+        
+        # Call the import command
+        ctx.invoke(import_parts,
+                  input_file=input_file,
+                  update_existing=update_existing,
+                  dry_run=dry_run,
+                  batch_size=100,
+                  skip_duplicates=False,
+                  transform_data=True,
+                  mapping_file=None)
+        
+    except Exception as e:
+        print_error(f"Failed to import parts: {e}")
+
+
+def _interactive_export_parts(ctx):
+    """Interactive parts export workflow."""
+    try:
+        print_info("Export Parts:")
+        
+        # Get export options
+        output_file = click.prompt("Output file path", type=str)
+        category = click.prompt("Filter by category (optional)", default="", type=str)
+        include_inactive = click.confirm("Include inactive parts?", default=False)
+        
+        format_choice = click.prompt(
+            "Export format [1=csv, 2=json]",
+            type=click.IntRange(1, 2),
+            default=1
+        )
+        formats = ['csv', 'json']
+        format_type = formats[format_choice - 1]
+        
+        # Call the export command
+        ctx.invoke(export,
+                  output_file=output_file,
+                  category=category or None,
+                  active_only=not include_inactive,
+                  include_inactive=include_inactive,
+                  format=format_type)
+        
+    except Exception as e:
+        print_error(f"Failed to export parts: {e}")
+
+
+def _interactive_search_parts(ctx):
+    """Interactive parts search workflow."""
+    try:
+        print_info("Search Parts:")
+        
+        # Get search criteria
+        search_term = click.prompt("Search term (part number, description, or category)", type=str)
+        
+        # Simple search implementation
+        db_manager = ctx.get_db_manager()
+        all_parts = db_manager.list_parts(active_only=False)
+        
+        # Filter parts based on search term
+        matching_parts = []
+        search_lower = search_term.lower()
+        
+        for part in all_parts:
+            if (search_lower in (part.part_number or '').lower() or
+                search_lower in (part.description or '').lower() or
+                search_lower in (part.category or '').lower()):
+                matching_parts.append(part)
+        
+        if not matching_parts:
+            print_info(f"No parts found matching '{search_term}'")
+            return
+        
+        # Display results
+        parts_data = []
+        for part in matching_parts:
+            parts_data.append({
+                'Part Number': part.part_number,
+                'Price': part.authorized_price,
+                'Description': part.description or '',
+                'Category': part.category or '',
+                'Active': 'Yes' if part.is_active else 'No'
+            })
+        
+        click.echo(format_table(parts_data))
+        print_info(f"Found {len(matching_parts)} matching parts")
+        
+    except Exception as e:
+        print_error(f"Failed to search parts: {e}")

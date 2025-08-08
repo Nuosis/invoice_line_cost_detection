@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.16] - 2025-08-08
+
+### Changes
+
+Modified files:
+  - Modified: cli/commands/config_commands.py
+  - Modified: cli/commands/database_commands.py
+  - Modified: cli/commands/parts_commands.py
+  - Modified: cli/main.py
+  - Modified: docs/USER_MANUAL.md
+
+**Deployment:** 2025-08-08 10:51:43 MDT
+
+
 ## [1.0.15] - 2025-08-08
 
 ### Changes

@@ -483,12 +483,53 @@ uv run invoice-checker parts stats --category "Clothing"
 
 ## Database Operations
 
-The system provides comprehensive database management capabilities.
+The system provides comprehensive database management capabilities through both interactive menus and command-line interface.
+
+### Interactive Database Management
+
+When you run the application without arguments, you'll see the main menu. Select option 3 to access the database management menu:
+
+```
+╔═════════════════════════════════════════════════════════════════════════════════╗
+║                                   MAIN MENU                                     ║
+╚═════════════════════════════════════════════════════════════════════════════════╝
+
+1) Process Invoices    - Run interactive invoice processing with discovery
+2) Manage Parts        - Add, update, import/export parts database
+3) Manage Database     - Backup, restore, and maintain database
+4) Setup               - Install, update, and configure system
+5) Help                - Show help and documentation
+6) Exit                - Exit the application
+```
+
+The database management menu provides these options:
+
+```
+Database Management Options:
+1) Create backup
+2) Restore from backup
+3) Database maintenance
+4) Database migration
+5) View backup history
+6) Reset database
+7) Return to main menu
+```
+
+#### Interactive Features
+
+- **Guided Workflows**: Step-by-step prompts for each operation
+- **Safety Confirmations**: Multiple confirmation steps for destructive operations
+- **Automatic Backups**: Pre-operation backups created automatically
+- **Progress Indicators**: Real-time feedback during long operations
+- **Error Recovery**: Clear guidance when issues occur
 
 ### Backup and Restore
 
 #### Creating Backups
 
+**Interactive Mode**: Select "Create backup" from the database management menu for guided backup creation.
+
+**Command Line**:
 ```bash
 # Create a standard backup
 uv run invoice-checker database backup
@@ -503,8 +544,32 @@ uv run invoice-checker database backup --compress
 uv run invoice-checker database backup --include-logs
 ```
 
+#### Viewing Backup History
+
+**Interactive Mode**: Select "View backup history" from the database management menu to see available backups with details.
+
+**Command Line**:
+```bash
+# View recent backups
+uv run invoice-checker database view-backup-history
+
+# View more backups
+uv run invoice-checker database view-backup-history --limit 20
+
+# View backups in specific directory
+uv run invoice-checker database view-backup-history --backup-dir ./backups
+```
+
+The backup history shows:
+- File name and creation date
+- File size in MB
+- Full file path for easy access
+
 #### Restoring from Backup
 
+**Interactive Mode**: Select "Restore from backup" from the database management menu for guided restoration with backup selection.
+
+**Command Line**:
 ```bash
 # Restore from a backup file
 uv run invoice-checker database restore backup_2025_01_08.db
@@ -520,6 +585,9 @@ uv run invoice-checker database restore backup_2025_01_08.db --no-verify
 
 ### Database Maintenance
 
+**Interactive Mode**: Select "Database maintenance" from the database management menu for guided maintenance with customizable options.
+
+**Command Line**:
 ```bash
 # Run all maintenance tasks
 uv run invoice-checker database maintenance
@@ -534,8 +602,17 @@ uv run invoice-checker database maintenance --verify-integrity
 uv run invoice-checker database maintenance --no-auto-backup
 ```
 
+Maintenance operations include:
+- **Vacuum**: Reclaims unused space and optimizes database structure
+- **Log Cleanup**: Removes old discovery log entries based on retention policy
+- **Integrity Check**: Verifies database structure and data consistency
+- **Statistics**: Shows space savings and maintenance results
+
 ### Database Migration
 
+**Interactive Mode**: Select "Database migration" from the database management menu for guided schema updates.
+
+**Command Line**:
 ```bash
 # Check current database version
 uv run invoice-checker database migrate --dry-run
@@ -549,6 +626,17 @@ uv run invoice-checker database migrate --backup-first
 
 ### Database Reset
 
+**⚠️ WARNING: Database reset permanently deletes all data!**
+
+**Interactive Mode**: Select "Reset database" from the database management menu for guided reset with multiple safety confirmations.
+
+The interactive reset process:
+1. Choose whether to keep configuration settings
+2. Review what will be deleted (parts data, discovery logs, optionally configs)
+3. Type "RESET" to confirm (case-sensitive)
+4. Automatic backup is created before reset
+
+**Command Line**:
 ```bash
 # Reset database (with confirmation)
 uv run invoice-checker database reset
@@ -559,6 +647,25 @@ uv run invoice-checker database reset --force
 # Keep configuration settings
 uv run invoice-checker database reset --keep-config
 ```
+
+### Best Practices for Database Management
+
+1. **Regular Backups**: Create backups before major operations or data imports
+2. **Use Interactive Mode**: For safety, use the interactive interface for destructive operations
+3. **Monitor Database Size**: Use maintenance to track database growth and optimize performance
+4. **Test Restores**: Periodically test backup restoration to ensure backups are valid
+5. **Keep Multiple Backups**: Maintain several backup versions for different time periods
+6. **Review Backup History**: Use the backup history feature to manage and organize backups
+
+### Troubleshooting Database Issues
+
+If you encounter database problems:
+
+1. **Use Interactive Mode**: The guided interface provides step-by-step troubleshooting
+2. **Check Integrity**: Run database maintenance with integrity check
+3. **View Backup History**: Identify the most recent good backup
+4. **Create Safety Backup**: Always backup before attempting repairs
+5. **Reset as Last Resort**: Use database reset only if other methods fail
 
 ---
 

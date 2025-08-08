@@ -577,6 +577,187 @@ def setup(ctx, interactive):
         raise CLIError(f"Failed to run setup: {e}")
 
 
+def run_interactive_config_management(ctx):
+    """
+    Run interactive configuration management workflow.
+    
+    This function provides a menu-driven interface for configuration
+    management operations, making it easy for users to view and modify
+    system settings.
+    
+    Args:
+        ctx: CLI context containing database manager and other resources
+    """
+    from cli.prompts import prompt_for_choice
+    from cli.exceptions import UserCancelledError
+    
+    print_info("Starting configuration management...")
+    
+    while True:
+        try:
+            # Display configuration management menu
+            click.echo("\n" + "="*75)
+            click.echo("                        CONFIGURATION MANAGEMENT")
+            click.echo("="*75)
+            
+            menu_options = [
+                "View all configurations",
+                "Get specific configuration",
+                "Set configuration value",
+                "Reset configuration to default",
+                "Run setup wizard",
+                "Return to main menu"
+            ]
+            
+            print_info("Configuration Management Options:")
+            for i, option in enumerate(menu_options, 1):
+                click.echo(f"{i}) {option}")
+            
+            choice = prompt_for_choice("Select option (1-6)", [str(i) for i in range(1, 7)])
+            choice_num = int(choice)
+            
+            if choice_num == 1:
+                # View all configurations
+                _interactive_list_config(ctx)
+            elif choice_num == 2:
+                # Get specific configuration
+                _interactive_get_config(ctx)
+            elif choice_num == 3:
+                # Set configuration value
+                _interactive_set_config(ctx)
+            elif choice_num == 4:
+                # Reset configuration
+                _interactive_reset_config(ctx)
+            elif choice_num == 5:
+                # Run setup wizard
+                ctx.invoke(setup, interactive=True)
+            elif choice_num == 6:
+                # Return to main menu
+                print_info("Returning to main menu...")
+                break
+            else:
+                print_error("Invalid option. Please select 1-6.")
+                continue
+                
+        except UserCancelledError:
+            print_info("Configuration management cancelled by user.")
+            break
+        except KeyboardInterrupt:
+            print_info("\nConfiguration management cancelled by user.")
+            break
+        except Exception as e:
+            print_error(f"An error occurred: {e}")
+            if not click.confirm("Continue with configuration management?", default=True):
+                break
+
+
+def _interactive_list_config(ctx):
+    """Interactive configuration listing workflow."""
+    try:
+        print_info("List Configurations:")
+        
+        # Get filter options
+        category = click.prompt("Filter by category (optional)", default="", type=str)
+        if not category.strip():
+            category = None
+        
+        format_choice = click.prompt(
+            "Output format [1=table, 2=json]",
+            type=click.IntRange(1, 2),
+            default=1
+        )
+        formats = ['table', 'json']
+        format_type = formats[format_choice - 1]
+        
+        # Call the list command
+        ctx.invoke(list, category=category, format=format_type)
+        
+    except Exception as e:
+        print_error(f"Failed to list configurations: {e}")
+
+
+def _interactive_get_config(ctx):
+    """Interactive configuration retrieval workflow."""
+    try:
+        print_info("Get Configuration Value:")
+        
+        # Get configuration key
+        key = click.prompt("Configuration key", type=str)
+        
+        format_choice = click.prompt(
+            "Output format [1=value, 2=json]",
+            type=click.IntRange(1, 2),
+            default=1
+        )
+        formats = ['value', 'json']
+        format_type = formats[format_choice - 1]
+        
+        # Call the get command
+        ctx.invoke(get, key=key, format=format_type)
+        
+    except Exception as e:
+        print_error(f"Failed to get configuration: {e}")
+
+
+def _interactive_set_config(ctx):
+    """Interactive configuration setting workflow."""
+    try:
+        print_info("Set Configuration Value:")
+        
+        # Get configuration details
+        key = click.prompt("Configuration key", type=str)
+        value = click.prompt("Configuration value", type=str)
+        
+        # Optional details
+        type_choice = click.prompt(
+            "Value type [1=auto-detect, 2=string, 3=number, 4=boolean, 5=json]",
+            type=click.IntRange(1, 5),
+            default=1
+        )
+        
+        if type_choice == 1:
+            data_type = None  # Auto-detect
+        else:
+            types = [None, 'string', 'number', 'boolean', 'json']
+            data_type = types[type_choice]
+        
+        description = click.prompt("Description (optional)", default="", type=str)
+        category = click.prompt("Category (optional)", default="general", type=str)
+        
+        # Call the set command
+        ctx.invoke(set,
+                  key=key,
+                  value=value,
+                  type=data_type,
+                  description=description or None,
+                  category=category)
+        
+    except Exception as e:
+        print_error(f"Failed to set configuration: {e}")
+
+
+def _interactive_reset_config(ctx):
+    """Interactive configuration reset workflow."""
+    try:
+        print_info("Reset Configuration:")
+        
+        # Get reset options
+        reset_all = click.confirm("Reset all configurations to defaults?", default=False)
+        
+        if reset_all:
+            # Reset all configurations
+            force = click.confirm("Skip confirmation prompts?", default=False)
+            ctx.invoke(reset, key=None, force=force)
+        else:
+            # Reset specific configuration
+            key = click.prompt("Configuration key to reset", type=str)
+            force = click.confirm("Skip confirmation prompt?", default=False)
+            ctx.invoke(reset, key=key, force=force)
+        
+    except Exception as e:
+        print_error(f"Failed to reset configuration: {e}")
+
+
 # Add commands to the group
 config_group.add_command(get)
 config_group.add_command(set)
