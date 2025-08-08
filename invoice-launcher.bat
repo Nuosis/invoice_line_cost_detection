@@ -59,12 +59,12 @@ call :show_main_menu
 set /p "choice=Select option (1-6): "
 
 if "%choice%"=="1" (
-    call :launch_interactive_app
+    call :launch_quick_process
     pause
     goto main_loop
 )
 if "%choice%"=="2" (
-    call :launch_quick_process
+    call :launch_interactive_app
     pause
     goto main_loop
 )
@@ -148,8 +148,8 @@ echo ╔════════════════════════
 echo ║                                     MAIN MENU                                     ║
 echo ╚═══════════════════════════════════════════════════════════════════════════════════╝
 echo.
-echo 1) Launch Application  - Start the interactive Invoice Rate Detection System
-echo 2) Quick Process       - Process invoices with defaults (discovery enabled)
+echo 1) Quick Process       - Process invoices with defaults (discovery enabled)
+echo 2) Launch Application  - Start the interactive Invoice Rate Detection System
 echo 3) Setup               - Install, update, and configure system
 echo 4) Configuration       - Setup and manage system options
 echo 5) Help                - Show help and documentation

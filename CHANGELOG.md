@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.21] - 2025-08-08
+
+### Changes
+
+Modified files:
+  - Modified: cli/main.py
+  - Modified: invoice-launcher.bat
+  - Modified: invoice-launcher.sh
+
+**Deployment:** 2025-08-08 14:26:28 MDT
+
+
 ## [1.0.20] - 2025-08-08
 
 ### Changes

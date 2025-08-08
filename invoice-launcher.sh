@@ -581,8 +581,8 @@ show_main_menu() {
     echo -e "${CYAN}║                                     MAIN MENU                                     ║${NC}"
     echo -e "${CYAN}╚═══════════════════════════════════════════════════════════════════════════════════╝${NC}"
     echo ""
-    echo -e "${GREEN}1)${NC} Launch Application  - Start the interactive Invoice Rate Detection System"
-    echo -e "${GREEN}2)${NC} Quick Process       - Process invoices with defaults (discovery enabled)"
+    echo -e "${GREEN}1)${NC} Quick Process       - Process invoices with defaults (discovery enabled)"
+    echo -e "${GREEN}2)${NC} Launch Application  - Start the interactive Invoice Rate Detection System"
     echo -e "${GREEN}3)${NC} Setup               - Install, update, and configure system"
     echo -e "${GREEN}4)${NC} Configuration       - Setup and manage system options"
     echo -e "${GREEN}5)${NC} Help                - Show help and documentation"
@@ -647,11 +647,11 @@ main() {
         
         case $choice in
             1)
-                launch_interactive_app
+                launch_quick_process
                 read -p "Press Enter to continue..."
                 ;;
             2)
-                launch_quick_process
+                launch_interactive_app
                 read -p "Press Enter to continue..."
                 ;;
             3)

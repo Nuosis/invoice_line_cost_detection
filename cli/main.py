@@ -566,6 +566,48 @@ cli.add_command(utils_commands.utils_group)
 
 # Add top-level commands for convenience (these are also available under utils)
 @cli.command()
+@click.argument('input_path', type=click.Path(exists=True), required=False)
+@click.option('--no-auto-open', is_flag=True,
+              help='Disable automatic opening of generated reports')
+@pass_context
+def quick(ctx, input_path, no_auto_open):
+    """
+    Quick processing with all defaults but discovery enabled.
+    
+    This command processes invoices using all configured defaults:
+    - Uses default invoice location if no input provided
+    - Uses default output format and location
+    - Uses default validation mode
+    - Enables part discovery (but auto-adds new parts without prompting)
+    - Auto-opens reports unless --no-auto-open is specified
+    
+    Perfect for streamlined processing when you want discovery
+    but don't want to answer prompts.
+    
+    Examples:
+        # Quick process with defaults
+        invoice-checker quick
+        
+        # Quick process specific folder
+        invoice-checker quick /path/to/invoices
+        
+        # Quick process without auto-opening reports
+        invoice-checker quick --no-auto-open
+    """
+    try:
+        from cli.commands.invoice_commands import run_quick_processing
+        from cli.exceptions import UserCancelledError, CLIError
+        run_quick_processing(ctx, input_path, not no_auto_open)
+    except UserCancelledError:
+        click.echo("Quick processing cancelled by user.")
+    except Exception as e:
+        logger = logging.getLogger(__name__)
+        logger.exception("Quick processing failed")
+        click.echo(f"Quick processing failed: {e}", err=True)
+        sys.exit(1)
+
+
+@cli.command()
 @click.option('--detailed', is_flag=True, help='Show detailed version and dependency information')
 @pass_context
 def version(ctx, detailed):
