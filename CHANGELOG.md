@@ -7,6 +7,82 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.15] - 2025-08-08
+
+### Changes
+
+New files:
+  - Added: invoice-rate-detection-1.0.15.zip
+  - Added: invoice-rate-detection-1.0.15/.deployed
+  - Added: invoice-rate-detection-1.0.15/.deployment_info
+  - Added: invoice-rate-detection-1.0.15/.version
+  - Added: invoice-rate-detection-1.0.15/BULK_OPERATIONS_GUIDE.md
+  - Added: invoice-rate-detection-1.0.15/CHANGELOG.md
+  - Added: invoice-rate-detection-1.0.15/Clarity Invoice Validator.bat
+  - Added: invoice-rate-detection-1.0.15/Clarity Invoice Validator.command
+  - Added: invoice-rate-detection-1.0.15/ERROR_HANDLING_GUIDE.md
+  - Added: invoice-rate-detection-1.0.15/INTERACTIVE_PART_DISCOVERY.md
+  - Added: invoice-rate-detection-1.0.15/README.md
+  - Added: invoice-rate-detection-1.0.15/REFACTOR.md
+  - Added: invoice-rate-detection-1.0.15/REFACTOR_TODO.md
+  - Added: invoice-rate-detection-1.0.15/TASKS.md
+  - Added: invoice-rate-detection-1.0.15/USER_FLOWS.md
+  - Added: invoice-rate-detection-1.0.15/USER_MANUAL.md
+  - Added: invoice-rate-detection-1.0.15/Uninstaller.command
+  - Added: invoice-rate-detection-1.0.15/__init__.py
+  - Added: invoice-rate-detection-1.0.15/commands/__init__.py
+  - Added: invoice-rate-detection-1.0.15/commands/bulk_operations.py
+  - Added: invoice-rate-detection-1.0.15/commands/config_commands.py
+  - Added: invoice-rate-detection-1.0.15/commands/database_commands.py
+  - Added: invoice-rate-detection-1.0.15/commands/discovery_commands.py
+  - Added: invoice-rate-detection-1.0.15/commands/invoice_commands.py
+  - Added: invoice-rate-detection-1.0.15/commands/parts_commands.py
+  - Added: invoice-rate-detection-1.0.15/commands/utils_commands.py
+  - Added: invoice-rate-detection-1.0.15/context.py
+  - Added: invoice-rate-detection-1.0.15/database.py
+  - Added: invoice-rate-detection-1.0.15/db_migration.py
+  - Added: invoice-rate-detection-1.0.15/db_utils.py
+  - Added: invoice-rate-detection-1.0.15/deploy.sh
+  - Added: invoice-rate-detection-1.0.15/design/cli_command_structure_design.md
+  - Added: invoice-rate-detection-1.0.15/design/database_schema_design.md
+  - Added: invoice-rate-detection-1.0.15/design/report_format_specification.md
+  - Added: invoice-rate-detection-1.0.15/design/validation_logic_specification.md
+  - Added: invoice-rate-detection-1.0.15/error_handlers.py
+  - Added: invoice-rate-detection-1.0.15/error_solving/error_solving_prompt.md
+  - Added: invoice-rate-detection-1.0.15/error_solving/error_solving_template.md
+  - Added: invoice-rate-detection-1.0.15/error_solving/validation_engine_data_quality_error.md
+  - Added: invoice-rate-detection-1.0.15/exceptions.py
+  - Added: invoice-rate-detection-1.0.15/formatters.py
+  - Added: invoice-rate-detection-1.0.15/invoice-launcher.bat
+  - Added: invoice-rate-detection-1.0.15/invoice-launcher.sh
+  - Added: invoice-rate-detection-1.0.15/invoice_processor.py
+  - Added: invoice-rate-detection-1.0.15/invoices/5790265775.pdf
+  - Added: invoice-rate-detection-1.0.15/invoices/5790265776.pdf
+  - Added: invoice-rate-detection-1.0.15/invoices/5790265781.pdf
+  - Added: invoice-rate-detection-1.0.15/invoices/5790265785.pdf
+  - Added: invoice-rate-detection-1.0.15/invoices/5790265786.pdf
+  - Added: invoice-rate-detection-1.0.15/main.py
+  - Added: invoice-rate-detection-1.0.15/models.py
+  - Added: invoice-rate-detection-1.0.15/part_discovery.py
+  - Added: invoice-rate-detection-1.0.15/pdf_processor.py
+  - Added: invoice-rate-detection-1.0.15/progress.py
+  - Added: invoice-rate-detection-1.0.15/project/SCOPE.md
+  - Added: invoice-rate-detection-1.0.15/project/SOW.md
+  - Added: invoice-rate-detection-1.0.15/project/SOW.pdf
+  - Added: invoice-rate-detection-1.0.15/project/Safety_Supply_Proposal.pdf
+  - Added: invoice-rate-detection-1.0.15/prompts.py
+  - Added: invoice-rate-detection-1.0.15/pyproject.toml
+  - Added: invoice-rate-detection-1.0.15/report_generator.py
+  - Added: invoice-rate-detection-1.0.15/report_utils.py
+  - Added: invoice-rate-detection-1.0.15/uv.lock
+  - Added: invoice-rate-detection-1.0.15/validation_engine.py
+  - Added: invoice-rate-detection-1.0.15/validation_helpers.py
+  - Added: invoice-rate-detection-1.0.15/validators.py
+  - Added: invoice-rate-detection-1.0.15/version.py
+
+**Deployment:** 2025-08-08 10:27:36 MDT
+
+
 ## [1.0.14] - 2025-08-08
 
 ### Changes
