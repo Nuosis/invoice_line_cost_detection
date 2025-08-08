@@ -271,6 +271,136 @@ Check system status:
 uv run invoice-checker status
 ```
 
+## Deployment
+
+### For Developers: Creating Deployment Packages
+
+The `deploy.sh` script provides several options for managing deployments:
+
+#### **📦 Deployment Script Options**
+
+```bash
+# Standard deployment (recommended for development)
+./deploy.sh
+```
+**What it does:**
+- Creates a summary of changes since last commit
+- Updates CHANGELOG.md with date and version
+- Commits changes to git with unique timestamp
+- Pushes to origin repository
+
+```bash
+# Create deployment package only
+./deploy.sh --package-only
+```
+**What it does:**
+- Creates a deployment-ready ZIP package
+- Includes static version file (no git dependency)
+- Adds deployment marker files
+- **Does NOT** commit or push to git
+- **Use when:** You want to create a user-ready package without affecting git
+
+```bash
+# Deploy AND create package
+./deploy.sh --with-package
+```
+**What it does:**
+- Performs standard deployment (commit + push)
+- **ALSO** creates deployment package
+- **Use when:** You want to both deploy to git AND create user package
+
+```bash
+# Preview what would be deployed
+./deploy.sh --dry-run
+```
+**What it does:**
+- Shows what changes would be deployed
+- Shows version information
+- **Does NOT** make any changes
+- **Use when:** You want to preview before deploying
+
+#### **🎯 When to Use Each Option**
+
+| Scenario | Command | Purpose |
+|----------|---------|---------|
+| **Regular development** | `./deploy.sh` | Commit and push changes to git |
+| **Create user package** | `./deploy.sh --package-only` | Generate ZIP for end users |
+| **Release version** | `./deploy.sh --with-package` | Deploy to git AND create user package |
+| **Preview changes** | `./deploy.sh --dry-run` | Check what would be deployed |
+
+#### **📁 Deployment Package Contents**
+
+When using `--package-only` or `--with-package`, the script creates:
+- `invoice-rate-detection-{version}.zip` - Complete user package
+- `invoice-rate-detection-{version}/` - Extracted package directory
+
+**Package includes:**
+- All application files (cli/, database/, processing/)
+- Documentation (docs/, README.md, CHANGELOG.md)
+- Launcher scripts (*.sh, *.bat, *.command)
+- **Static version file** (`.version`) - No git dependency
+- **Deployment marker** (`.deployed`) - Indicates deployed mode
+- **Deployment info** (`.deployment_info`) - Build metadata
+
+#### **🔄 Version Handling**
+
+The system automatically handles versioning differently for development vs deployment:
+
+**Development Mode** (git repository):
+- Version: `1.0.14+dirty` (dynamic, git-based)
+- Uses commit count and dirty status
+- Requires git to be available
+
+**Deployment Mode** (user package):
+- Version: `1.0.14` (static, from `.version` file)
+- No git dependency required
+- Clean version number for end users
+
+#### **🔗 Integration with Clarity Invoice Validator Bootstrap**
+
+The deployment packages work seamlessly with the Clarity Invoice Validator bootstrap scripts:
+
+**Bootstrap Script Workflow:**
+1. **Clarity Invoice Validator.bat/.command** (bootstrap) →
+2. **invoice-launcher.sh/.bat** (launcher) →
+3. **invoice_line_cost_detection/** (git-based installation)
+
+**How Deployment Packages Fit:**
+
+```bash
+# For git-based installations (current system)
+./deploy.sh                    # Standard development deployment
+./deploy.sh --with-package     # Deploy to git AND create user package
+
+# For direct user distribution (alternative)
+./deploy.sh --package-only     # Create standalone package
+```
+
+**Two Distribution Methods:**
+
+| Method | Bootstrap Required | Git Required | Updates |
+|--------|-------------------|--------------|---------|
+| **Git-based** (current) | ✅ Yes | ✅ Yes | Automatic via git |
+| **Package-based** (new) | ❌ No | ❌ No | Manual package replacement |
+
+**Git-based Distribution** (recommended):
+- Users download `Clarity Invoice Validator.bat/.command`
+- Bootstrap script downloads launcher from GitHub
+- Launcher clones git repository and manages updates
+- **Advantages**: Automatic updates, always latest version
+- **Requirements**: Git, internet connection
+
+**Package-based Distribution** (alternative):
+- Users download `invoice-rate-detection-{version}.zip`
+- Extract and run directly, no git required
+- **Advantages**: No git dependency, works offline
+- **Disadvantages**: Manual updates required
+
+**Hybrid Approach** (best of both):
+- Primary: Git-based with bootstrap scripts (automatic updates)
+- Fallback: Package-based for users without git
+- Use `./deploy.sh --with-package` to create both
+
 ## Development
 
 ### Project Structure

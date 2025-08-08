@@ -67,7 +67,7 @@ show_banner() {
 ║               ╚═════╝ ╚══════╝   ╚═╝   ╚══════╝ ╚═════╝   ╚═╝    ╚═════╝ ╚═╝  ╚═╝ ║
 ║                                                                                   ║
 ║                          Advanced Invoice Rate Detection                          ║
-║                                   Version ${app_version}                                   ║
+║                                   Version ${app_version}                          ║
 ║                         marcus@claritybusinesssolutions.ca                        ║
 ╚═══════════════════════════════════════════════════════════════════════════════════╝
 EOF

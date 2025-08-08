@@ -51,12 +51,7 @@ check_uncommitted_changes() {
         echo "Uncommitted changes:"
         git status --short
         echo
-        read -p "Do you want to continue with deployment? (y/N): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            log_info "Deployment cancelled."
-            exit 0
-        fi
+        log_info "Proceeding with deployment of uncommitted changes..."
     fi
 }
 
@@ -213,6 +208,66 @@ generate_commit_message() {
     echo "deploy: v${version} - ${timestamp}"
 }
 
+# Create deployment package with static version
+create_deployment_package() {
+    local version="$1"
+    local package_dir="invoice-rate-detection-${version}"
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S %Z')
+    
+    log_info "Creating deployment package: $package_dir"
+    
+    # Create package directory
+    rm -rf "$package_dir"
+    mkdir -p "$package_dir"
+    
+    # Copy application files (exclude development files)
+    cp -r cli/ "$package_dir/"
+    cp -r database/ "$package_dir/"
+    cp -r processing/ "$package_dir/"
+    cp -r docs/ "$package_dir/"
+    cp pyproject.toml "$package_dir/"
+    cp README.md "$package_dir/"
+    cp CHANGELOG.md "$package_dir/"
+    cp uv.lock "$package_dir/"
+    cp *.sh "$package_dir/" 2>/dev/null || true
+    cp *.bat "$package_dir/" 2>/dev/null || true
+    cp *.command "$package_dir/" 2>/dev/null || true
+    
+    # Create deployment marker file
+    touch "$package_dir/.deployed"
+    
+    # Create static version file
+    echo "$version" > "$package_dir/.version"
+    
+    # Create deployment info file
+    cat > "$package_dir/.deployment_info" << EOF
+Deployment Information
+=====================
+Version: $version
+Build Date: $timestamp
+Build From: $(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+Build Branch: $(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+
+This is a deployed version of the Invoice Rate Detection System.
+Version information is static and does not depend on git.
+EOF
+    
+    # Create ZIP archive
+    log_info "Creating ZIP archive..."
+    zip -r "${package_dir}.zip" "$package_dir/" > /dev/null
+    
+    log_success "Deployment package created: ${package_dir}.zip"
+    log_info "Package contents:"
+    echo "  - Application files (cli/, database/, processing/)"
+    echo "  - Documentation (docs/, README.md, CHANGELOG.md)"
+    echo "  - Launcher scripts (*.sh, *.bat, *.command)"
+    echo "  - Static version file (.version)"
+    echo "  - Deployment marker (.deployed)"
+    echo "  - Deployment info (.deployment_info)"
+    
+    return 0
+}
+
 # Main deployment function
 deploy() {
     log_info "Starting deployment process..."
@@ -242,13 +297,7 @@ deploy() {
     echo "======================"
     echo
     
-    # Confirm deployment
-    read -p "Proceed with deployment of version $current_version? (y/N): " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        log_info "Deployment cancelled."
-        exit 0
-    fi
+    log_info "Proceeding with automated deployment of version $current_version..."
     
     # Update CHANGELOG
     log_info "Updating CHANGELOG..."
@@ -305,16 +354,40 @@ main() {
         echo "  1. Create a summary of changes since last commit"
         echo "  2. Update CHANGELOG.md with date and version"
         echo "  3. Commit git with unique commit title (timestamp) and push to origin"
+        echo "  4. Optionally create deployment package with static version"
         echo ""
         echo "Options:"
-        echo "  -h, --help    Show this help message"
-        echo "  --dry-run     Show what would be done without making changes"
+        echo "  -h, --help       Show this help message"
+        echo "  --dry-run        Show what would be done without making changes"
+        echo "  --package-only   Create deployment package without git operations"
+        echo "  --with-package   Deploy and create deployment package"
         echo ""
         echo "Requirements:"
         echo "  - Git repository initialized"
         echo "  - Python 3 available"
         echo "  - cli/version.py file with version information"
         echo ""
+        exit 0
+    fi
+    
+    # Check for package-only flag
+    if [[ "$1" == "--package-only" ]]; then
+        log_info "PACKAGE ONLY MODE - Creating deployment package without git operations"
+        echo ""
+        
+        check_git_repo
+        
+        local current_version
+        current_version=$(get_current_version)
+        if [[ $? -ne 0 ]]; then
+            log_error "Failed to get current version from $VERSION_FILE"
+            exit 1
+        fi
+        
+        log_info "Creating deployment package for version: $current_version"
+        create_deployment_package "$current_version"
+        
+        log_success "Deployment package created successfully!"
         exit 0
     fi
     
@@ -347,8 +420,31 @@ main() {
         exit 0
     fi
     
+    # Check for with-package flag
+    local create_package=false
+    if [[ "$1" == "--with-package" ]]; then
+        create_package=true
+        log_info "DEPLOY WITH PACKAGE MODE - Will create deployment package after git operations"
+        echo ""
+    fi
+    
     # Run deployment
     deploy
+    
+    # Create deployment package if requested
+    if [[ "$create_package" == true ]]; then
+        echo ""
+        log_info "Creating deployment package..."
+        
+        local current_version
+        current_version=$(get_current_version)
+        if [[ $? -eq 0 ]]; then
+            create_deployment_package "$current_version"
+            log_success "Deployment package created successfully!"
+        else
+            log_warning "Could not create deployment package - failed to get version"
+        fi
+    fi
 }
 
 # Run main function with all arguments
