@@ -127,7 +127,6 @@ def run_main_interactive_menu(ctx):
                 "Process Invoices    - Run interactive invoice processing with discovery",
                 "Manage Parts        - Add, update, import/export parts database",
                 "Manage Database     - Backup, restore, and maintain database",
-                "Setup               - Install, update, and configure system",
                 "Help                - Show help and documentation",
                 "Exit                - Exit the application"
             ]
@@ -136,7 +135,7 @@ def run_main_interactive_menu(ctx):
                 click.echo(f"{i}) {option}")
             
             click.echo("")
-            choice = prompt_for_choice("Select option (1-6)", [str(i) for i in range(1, 7)])
+            choice = prompt_for_choice("Select option (1-5)", [str(i) for i in range(1, 6)])
             choice_num = int(choice)
             
             if choice_num == 1:
@@ -157,20 +156,15 @@ def run_main_interactive_menu(ctx):
                 run_interactive_database_management(ctx)
                 
             elif choice_num == 4:
-                # Setup
-                print_info("[INFO] Starting system setup...")
-                _run_interactive_setup(ctx)
-                
-            elif choice_num == 5:
                 # Help
                 _show_help_menu(ctx)
                 
-            elif choice_num == 6:
+            elif choice_num == 5:
                 # Exit
                 print_info("Thank you for using the Invoice Rate Detection System!")
                 break
             else:
-                print_error("Invalid option. Please select 1-6.")
+                print_error("Invalid option. Please select 1-5.")
                 continue
                 
         except UserCancelledError:
@@ -261,71 +255,6 @@ def _run_interactive_parts_management(ctx):
                 break
 
 
-def _run_interactive_setup(ctx):
-    """Interactive system setup workflow."""
-    from cli.prompts import prompt_for_choice
-    from cli.exceptions import UserCancelledError
-    from cli.formatters import print_info, print_error, print_success
-    
-    while True:
-        try:
-            click.echo("\n" + "="*75)
-            click.echo("                           SYSTEM SETUP")
-            click.echo("="*75)
-            
-            setup_options = [
-                "View system status",
-                "Configure settings",
-                "Initialize database",
-                "Check dependencies",
-                "View logs",
-                "Return to main menu"
-            ]
-            
-            print_info("Setup Options:")
-            for i, option in enumerate(setup_options, 1):
-                click.echo(f"{i}) {option}")
-            
-            choice = prompt_for_choice("Select option (1-6)", [str(i) for i in range(1, 7)])
-            choice_num = int(choice)
-            
-            if choice_num == 1:
-                # View system status
-                print_info("System Status:")
-                ctx.invoke(status, format='table')
-            elif choice_num == 2:
-                # Configure settings
-                from cli.commands.config_commands import run_interactive_config_management
-                run_interactive_config_management(ctx)
-            elif choice_num == 3:
-                # Initialize database
-                print_info("Initializing database...")
-                db_manager = ctx.get_db_manager()
-                db_manager.initialize_database()
-                print_success("Database initialized successfully!")
-            elif choice_num == 4:
-                # Check dependencies
-                print_info("Checking system dependencies...")
-                _check_system_dependencies()
-            elif choice_num == 5:
-                # View logs
-                print_info("Recent system activity:")
-                _show_recent_logs(ctx)
-            elif choice_num == 6:
-                # Return to main menu
-                print_info("Returning to main menu...")
-                break
-            else:
-                print_error("Invalid option. Please select 1-6.")
-                continue
-                
-        except UserCancelledError:
-            print_info("Setup cancelled by user.")
-            break
-        except Exception as e:
-            print_error(f"An error occurred: {e}")
-            if not click.confirm("Continue with setup?", default=True):
-                break
 
 
 def _show_help_menu(ctx):

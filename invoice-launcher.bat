@@ -127,9 +127,9 @@ echo.
 goto :eof
 
 :show_main_menu
-echo ╔═════════════════════════════════════════════════════════════════════════════════╗
-echo ║                                   MAIN MENU                                     ║
-echo ╚═════════════════════════════════════════════════════════════════════════════════╝
+echo ╔═══════════════════════════════════════════════════════════════════════════════════╗
+echo ║                                     MAIN MENU                                     ║
+echo ╚═══════════════════════════════════════════════════════════════════════════════════╝
 echo.
 echo 1) Launch Application  - Start the interactive Invoice Rate Detection System
 echo 2) Setup               - Install, update, and configure system
