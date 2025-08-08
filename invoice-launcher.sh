@@ -23,15 +23,16 @@ NC='\033[0m' # No Color
 # Get version from Python module
 get_app_version() {
     if [[ -d "$PROJECT_DIR" ]]; then
+        local current_dir=$(pwd)
         cd "$PROJECT_DIR"
         local version=$(python3 -c "
 try:
     from cli.version import get_version
-    print(get_version())
+    print(get_version(include_dirty=False))
 except:
     print('1.0.0')
 " 2>/dev/null || echo "1.0.0")
-        cd ..
+        cd "$current_dir"
         echo "$version"
     else
         echo "1.0.0"
