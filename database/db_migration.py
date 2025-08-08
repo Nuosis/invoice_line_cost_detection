@@ -66,9 +66,11 @@ class DatabaseMigration:
 
         -- Create parts table
         CREATE TABLE IF NOT EXISTS parts (
-            part_number TEXT PRIMARY KEY,
+            composite_key TEXT PRIMARY KEY,
+            part_number TEXT,
             authorized_price DECIMAL(10,4) NOT NULL CHECK (authorized_price > 0),
             description TEXT,
+            item_type TEXT,
             category TEXT,
             source TEXT DEFAULT 'manual' CHECK (source IN ('manual', 'discovered', 'imported')),
             first_seen_invoice TEXT,
@@ -101,14 +103,15 @@ class DatabaseMigration:
             user_decision TEXT,
             discovery_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             processing_session_id TEXT,
-            notes TEXT,
-            FOREIGN KEY (part_number) REFERENCES parts(part_number) ON DELETE SET NULL
+            notes TEXT
         );
 
         -- Create indexes for performance
+        CREATE INDEX IF NOT EXISTS idx_parts_composite ON parts(composite_key);
         CREATE INDEX IF NOT EXISTS idx_parts_number ON parts(part_number);
         CREATE INDEX IF NOT EXISTS idx_parts_active ON parts(is_active) WHERE is_active = 1;
         CREATE INDEX IF NOT EXISTS idx_parts_category ON parts(category);
+        CREATE INDEX IF NOT EXISTS idx_parts_item_type ON parts(item_type);
         CREATE INDEX IF NOT EXISTS idx_config_category ON config(category);
         CREATE INDEX IF NOT EXISTS idx_discovery_part ON part_discovery_log(part_number);
         CREATE INDEX IF NOT EXISTS idx_discovery_invoice ON part_discovery_log(invoice_number);
@@ -131,7 +134,7 @@ class DatabaseMigration:
             AFTER UPDATE ON parts
             FOR EACH ROW
             BEGIN
-                UPDATE parts SET last_updated = CURRENT_TIMESTAMP WHERE part_number = NEW.part_number;
+                UPDATE parts SET last_updated = CURRENT_TIMESTAMP WHERE composite_key = NEW.composite_key;
             END;
 
         CREATE TRIGGER IF NOT EXISTS update_config_timestamp
@@ -143,7 +146,7 @@ class DatabaseMigration:
 
         -- Create view for active parts (commonly used query)
         CREATE VIEW IF NOT EXISTS active_parts AS
-        SELECT part_number, authorized_price, description, category, source, first_seen_invoice, created_date, last_updated, notes
+        SELECT composite_key, part_number, authorized_price, description, item_type, category, source, first_seen_invoice, created_date, last_updated, notes
         FROM parts
         WHERE is_active = 1;
 
@@ -315,20 +318,51 @@ class DatabaseMigration:
         """
         try:
             with sqlite3.connect(str(self.db_path)) as conn:
-                # Insert sample parts
+                # Insert sample parts with composite keys
+                from database.models import Part
+                from decimal import Decimal
+                
                 sample_parts = [
-                    ('GS0448', 0.3000, 'SHIRT WORK LS BTN COTTON', 'Clothing', 'manual', None, 1, 'Sample part for testing'),
-                    ('GP0171NAVY', 0.2500, 'PANTS WORK NAVY', 'Clothing', 'manual', None, 1, 'Sample part for testing'),
-                    ('TOOL001', 15.9900, 'HAMMER CLAW 16OZ', 'Tools', 'manual', None, 1, 'Sample part for testing'),
+                    Part(
+                        part_number='GS0448',
+                        authorized_price=Decimal('0.3000'),
+                        description='SHIRT WORK LS BTN COTTON',
+                        item_type='SHIRT',
+                        category='Clothing',
+                        source='manual',
+                        notes='Sample part for testing'
+                    ),
+                    Part(
+                        part_number='GP0171NAVY',
+                        authorized_price=Decimal('0.2500'),
+                        description='PANTS WORK NAVY',
+                        item_type='PANTS',
+                        category='Clothing',
+                        source='manual',
+                        notes='Sample part for testing'
+                    ),
+                    Part(
+                        part_number='TOOL001',
+                        authorized_price=Decimal('15.9900'),
+                        description='HAMMER CLAW 16OZ',
+                        item_type='TOOL',
+                        category='Tools',
+                        source='manual',
+                        notes='Sample part for testing'
+                    ),
                 ]
                 
                 for part in sample_parts:
                     conn.execute("""
                         INSERT OR IGNORE INTO parts (
-                            part_number, authorized_price, description, category, source,
+                            composite_key, part_number, authorized_price, description, item_type, category, source,
                             first_seen_invoice, is_active, notes
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """, part)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        part.composite_key, part.part_number, float(part.authorized_price),
+                        part.description, part.item_type, part.category, part.source,
+                        part.first_seen_invoice, part.is_active, part.notes
+                    ))
                 
                 conn.commit()
                 logger.info("Sample data created successfully")

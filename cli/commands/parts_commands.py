@@ -511,38 +511,42 @@ def import_parts(ctx, input_file, update_existing, dry_run, batch_size, skip_dup
 @click.option('--category', '-c', type=str, help='Filter by category')
 @click.option('--active-only', is_flag=True, default=True, help='Export only active parts')
 @click.option('--include-inactive', is_flag=True, help='Include inactive parts')
+@click.option('--format', '-f', type=click.Choice(['csv', 'json']), default='csv', help='Export format')
 @pass_context
-def export(ctx, output_file, category, active_only, include_inactive):
+def export(ctx, output_file, category, active_only, include_inactive, format):
     """
-    Export parts to a CSV file.
-    
+    Export parts to a CSV or JSON file.
+
     Examples:
         # Export all active parts
         invoice-checker parts export parts.csv
-        
+
         # Export parts in a specific category
         invoice-checker parts export clothing_parts.csv --category "Clothing"
-        
+
         # Export all parts including inactive
         invoice-checker parts export all_parts.csv --include-inactive
+
+        # Export as JSON
+        invoice-checker parts export parts.json --format json
     """
     try:
         db_manager = ctx.get_db_manager()
         output_path = Path(output_file)
-        
+
         # Determine active filter
         show_active_only = active_only and not include_inactive
-        
+
         # Get parts from database
         parts = db_manager.list_parts(
             active_only=show_active_only,
             category=category
         )
-        
+
         if not parts:
             print_info("No parts found matching the criteria.")
             return
-        
+
         # Convert to export format
         export_data = []
         for part in parts:
@@ -556,12 +560,16 @@ def export(ctx, output_file, category, active_only, include_inactive):
                 'is_active': part.is_active,
                 'notes': part.notes or ''
             })
-        
-        # Write to CSV
-        write_csv(export_data, output_path)
-        
+
+        if format == 'csv':
+            write_csv(export_data, output_path)
+        elif format == 'json':
+            import json
+            with open(output_path, 'w', encoding='utf-8') as f:
+                json.dump(export_data, f, indent=2, default=str)
+
         print_success(f"Exported {len(export_data)} parts to {output_path}")
-        
+
     except DatabaseError as e:
         raise CLIError(f"Database error: {e}")
     except Exception as e:

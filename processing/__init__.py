@@ -1,9 +1,8 @@
 """
 PDF Processing Module for Invoice Rate Detection System.
 
-This module provides comprehensive PDF extraction and parsing capabilities
-for invoice processing, including text extraction, data validation, and
-structured data output for the validation engine.
+This module provides simplified PDF extraction and parsing capabilities
+for invoice processing, including text extraction and structured data output.
 """
 
 from .pdf_processor import PDFProcessor
@@ -15,11 +14,8 @@ from .exceptions import (
     FormatValidationError,
     DataQualityError
 )
-from .integration import (
-    PDFProcessingIntegrator,
-    create_integrator,
-    process_invoices_for_cli
-)
+from .report_generator import generate_reports
+from .part_discovery import discover_parts_from_json
 
 __all__ = [
     'PDFProcessor',
@@ -31,7 +27,6 @@ __all__ = [
     'InvoiceParsingError',
     'FormatValidationError',
     'DataQualityError',
-    'PDFProcessingIntegrator',
-    'create_integrator',
-    'process_invoices_for_cli'
+    'generate_reports',
+    'discover_parts_from_json'
 ]

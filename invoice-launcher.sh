@@ -1,7 +1,6 @@
 #!/bin/bash
 
 # Invoice Rate Detection System - Launcher Script
-# Version: 1.0.0
 # Description: Automated setup, update, and launcher for the invoice-checker system
 
 set -e  # Exit on any error
@@ -21,10 +20,29 @@ PURPLE='\033[0;35m'
 CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
+# Get version from Python module
+get_app_version() {
+    if [[ -d "$PROJECT_DIR" ]]; then
+        cd "$PROJECT_DIR"
+        local version=$(python3 -c "
+try:
+    from cli.version import get_version
+    print(get_version())
+except:
+    print('1.0.0')
+" 2>/dev/null || echo "1.0.0")
+        cd ..
+        echo "$version"
+    else
+        echo "1.0.0"
+    fi
+}
+
 # ASCII Art Banner
 show_banner() {
+    local app_version=$(get_app_version)
     echo -e "${CYAN}"
-    cat << "EOF"
+    cat << EOF
 ╔═══════════════════════════════════════════════════════════════════════════════════╗
 ║                                                                                   ║
 ║    ██╗███╗   ██╗██╗   ██╗ ██████╗ ██╗ ██████╗███████╗                             ║
@@ -49,6 +67,7 @@ show_banner() {
 ║               ╚═════╝ ╚══════╝   ╚═╝   ╚══════╝ ╚═════╝   ╚═╝    ╚═════╝ ╚═╝  ╚═╝ ║
 ║                                                                                   ║
 ║                          Advanced Invoice Rate Detection                          ║
+║                                   Version ${app_version}                                   ║
 ║                         marcus@claritybusinesssolutions.ca                        ║
 ╚═══════════════════════════════════════════════════════════════════════════════════╝
 EOF
@@ -544,7 +563,7 @@ setup_workflow() {
             update_project
             ;;
         5)
-            return
+            return 5  # Special exit code for "Return to main menu"
             ;;
         *)
             log_error "Invalid option"
@@ -556,9 +575,9 @@ setup_workflow() {
 show_help() {
     log_info "Displaying help and documentation..."
     
-    echo -e "${CYAN}╔══════════════════════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║                         HELP & DOCUMENTATION                                 ║${NC}"
-    echo -e "${CYAN}╚══════════════════════════════════════════════════════════════════════════════╝${NC}"
+    echo -e "${CYAN}╔═════════════════════════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║                              HELP & DOCUMENTATION                               ║${NC}"
+    echo -e "${CYAN}╚═════════════════════════════════════════════════════════════════════════════════╝${NC}"
     echo ""
     
     echo -e "${GREEN}OVERVIEW${NC}"
@@ -616,9 +635,9 @@ show_help() {
 
 # Main menu
 show_main_menu() {
-    echo -e "${CYAN}╔══════════════════════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║                              MAIN MENU                                       ║${NC}"
-    echo -e "${CYAN}╚══════════════════════════════════════════════════════════════════════════════╝${NC}"
+    echo -e "${CYAN}╔═════════════════════════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║                                   MAIN MENU                                     ║${NC}"
+    echo -e "${CYAN}╚═════════════════════════════════════════════════════════════════════════════════╝${NC}"
     echo ""
     echo -e "${GREEN}1)${NC} Process Invoices    - Run interactive invoice processing with discovery"
     echo -e "${GREEN}2)${NC} Manage Parts        - Add, update, import/export parts database"
@@ -696,7 +715,10 @@ main() {
                 ;;
             4)
                 setup_workflow
-                read -p "Press Enter to continue..."
+                # Check if user selected "Return to main menu" (exit code 5)
+                if [[ $? -ne 5 ]]; then
+                    read -p "Press Enter to continue..."
+                fi
                 ;;
             5)
                 show_help

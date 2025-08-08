@@ -94,12 +94,23 @@ goto main_loop
 
 REM Function definitions
 
+:get_app_version
+set "app_version=1.0.0"
+if exist "%PROJECT_DIR%" (
+    cd /d "%PROJECT_DIR%"
+    for /f "delims=" %%i in ('python -c "try: from cli.version import get_version; print(get_version()); except: print('1.0.0')" 2^>nul') do set "app_version=%%i"
+    cd ..
+)
+goto :eof
+
 :show_banner
+call :get_app_version
 echo.
 echo ================================================================================
-echo                           INVOICE RATE DETECTOR                              
-echo                     Advanced Invoice Rate Detection System                   
-echo                              Windows Version                                 
+echo                           INVOICE RATE DETECTOR
+echo                     Advanced Invoice Rate Detection System
+echo                              Version %app_version%
+echo                              Windows Version
 echo ================================================================================
 echo.
 goto :eof

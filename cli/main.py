@@ -14,6 +14,7 @@ import click
 
 from database.models import DatabaseError
 from cli.context import CLIContext, pass_context
+from cli.version import get_version, get_version_info
 from cli.commands import (
     invoice_commands,
     parts_commands,
@@ -33,7 +34,7 @@ from cli.formatters import setup_logging
               help='Specify custom configuration file path')
 @click.option('--database', type=click.Path(), default="invoice_detection.db",
               help='Specify custom database path')
-@click.version_option(version="1.0.0", prog_name="invoice-checker")
+@click.version_option(version=get_version(), prog_name="invoice-checker")
 @click.pass_context
 def cli(ctx, verbose, quiet, config_file, database):
     """
@@ -107,8 +108,9 @@ cli.add_command(utils_commands.utils_group)
 def version(ctx, detailed):
     """Display version and system information."""
     try:
-        # Basic version info
-        app_version = "1.0.0"
+        # Get comprehensive version info
+        version_info = get_version_info()
+        app_version = version_info['version']
         click.echo(f"Invoice Rate Detection System v{app_version}")
         
         if detailed:
@@ -116,11 +118,22 @@ def version(ctx, detailed):
             import platform
             system_info = {
                 'Application Version': app_version,
+                'Base Version': version_info['base_version'],
                 'Python Version': sys.version.split()[0],
                 'Platform': platform.platform(),
                 'Architecture': platform.architecture()[0],
                 'Python Executable': sys.executable
             }
+            
+            # Add git information if available
+            if version_info['git_available']:
+                system_info.update({
+                    'Git Commit': version_info['commit_hash'],
+                    'Git Branch': version_info['branch'],
+                    'Repository Status': 'Clean' if not version_info['dirty'] else 'Modified'
+                })
+            else:
+                system_info['Git Status'] = 'Not available'
             
             # Get database information
             try:

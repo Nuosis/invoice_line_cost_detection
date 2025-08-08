@@ -18,8 +18,8 @@ from rich.panel import Panel
 from cli.context import get_context
 from cli.formatters import format_success, format_error, format_warning, format_info
 from cli.exceptions import CLIError, UserCancelledError
-from processing.part_discovery_service import InteractivePartDiscoveryService
-from processing.part_discovery_prompts import BatchDiscoveryPrompt
+from processing.part_discovery import SimplePartDiscoveryService
+# Removed non-existent import - BatchDiscoveryPrompt
 from database.models import DatabaseError
 
 
@@ -61,7 +61,7 @@ def review_unknown_parts(ctx, session_id: Optional[str], interactive: bool, outp
     """
     try:
         app_context = get_context()
-        discovery_service = InteractivePartDiscoveryService(app_context.db_manager)
+        discovery_service = SimplePartDiscoveryService(app_context.db_manager)
         
         if not session_id:
             # Get the most recent session with unknown parts
@@ -86,9 +86,17 @@ def review_unknown_parts(ctx, session_id: Optional[str], interactive: bool, outp
             return
         
         if interactive:
-            # Interactive review and addition
-            batch_prompt = BatchDiscoveryPrompt(console)
-            decisions = batch_prompt.review_unknown_parts_batch(unknown_parts_data)
+            # Interactive review and addition - simplified approach
+            console.print(format_info(f"Found {len(unknown_parts_data)} unknown parts for review"))
+            decisions = []
+            for part_data in unknown_parts_data:
+                part_number = part_data.get('part_number', 'Unknown')
+                price = part_data.get('price', 0.0)
+                console.print(format_info(f"Part: {part_number}, Price: ${price:.4f}"))
+                if click.confirm(f"Add {part_number} to database?", default=True):
+                    decisions.append({'part_data': part_data, 'action': 'add'})
+                else:
+                    decisions.append({'part_data': part_data, 'action': 'skip'})
             
             if decisions:
                 # Process the decisions
@@ -204,7 +212,7 @@ def discovery_stats(ctx, session_id: Optional[str], days: int):
         
         if session_id:
             # Show stats for specific session
-            discovery_service = InteractivePartDiscoveryService(app_context.db_manager)
+            discovery_service = SimplePartDiscoveryService(app_context.db_manager)
             summary = discovery_service.get_session_summary(session_id)
             _display_session_stats(summary)
         else:
@@ -271,7 +279,7 @@ def export_discoveries(ctx, session_id: Optional[str], output: str, include_adde
         ctx.exit(1)
 
 
-def _get_most_recent_discovery_session(discovery_service: InteractivePartDiscoveryService) -> Optional[str]:
+def _get_most_recent_discovery_session(discovery_service: SimplePartDiscoveryService) -> Optional[str]:
     """Get the most recent discovery session with unknown parts."""
     try:
         # This would need to be implemented in the database manager
@@ -329,7 +337,7 @@ def _export_discovery_logs_csv(logs: List, output_path: str):
             })
 
 
-def _process_batch_decisions(discovery_service: InteractivePartDiscoveryService, 
+def _process_batch_decisions(discovery_service: SimplePartDiscoveryService,
                            decisions: List[dict], session_id: str) -> List[dict]:
     """Process batch decisions and return results."""
     results = []

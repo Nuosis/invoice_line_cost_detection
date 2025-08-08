@@ -1,9 +1,0 @@
-Invoice Rate Detection System - Validation Report
-============================================================
-
-Processing Summary:
-  Total Invoices: 1
-  Successfully Processed: 0
-  Total Anomalies Found: 0
-  Critical Issues: 0
-

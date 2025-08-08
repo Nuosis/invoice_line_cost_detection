@@ -170,20 +170,17 @@ class TestInteractivePartDiscoveryService:
             LineItem(
                 item_code="KNOWN_PART",
                 description="Known Part",
-                rate=Decimal("10.00"),
-                quantity=1
+                rate=Decimal("10.00")
             ),
             LineItem(
                 item_code="UNKNOWN_PART1",
                 description="Unknown Part 1",
-                rate=Decimal("15.50"),
-                quantity=2
+                rate=Decimal("15.50")
             ),
             LineItem(
                 item_code="UNKNOWN_PART2",
                 description="Unknown Part 2",
-                rate=Decimal("20.00"),
-                quantity=1
+                rate=Decimal("20.00")
             )
         ]
         
@@ -613,8 +610,7 @@ class TestDiscoveryLogging:
                 LineItem(
                     item_code="UNKNOWN_PART",
                     description="Unknown Part",
-                    rate=Decimal("15.50"),
-                    quantity=1
+                    rate=Decimal("15.50")
                 )
             ]
         )
@@ -642,7 +638,7 @@ class TestDiscoveryLogging:
         invoice_data = InvoiceData(
             invoice_number="INV001",
             line_items=[
-                LineItem(item_code="UNKNOWN_PART", rate=Decimal("15.50"), quantity=1)
+                LineItem(item_code="UNKNOWN_PART", rate=Decimal("15.50"))
             ]
         )
         

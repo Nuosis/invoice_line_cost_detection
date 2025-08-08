@@ -22,6 +22,7 @@ from cli.formatters import (
     print_success, print_warning, print_error, print_info,
     format_table, write_csv, display_summary
 )
+from processing.report_utils import get_documents_directory, get_report_summary_message
 from cli.progress import show_file_progress, MultiStepProgress
 from cli.prompts import (
     prompt_for_input_path, prompt_for_output_path, prompt_for_output_format,
@@ -30,10 +31,7 @@ from cli.prompts import (
 )
 from cli.exceptions import CLIError, ProcessingError, UserCancelledError
 from database.models import Part, PartDiscoveryLog, DatabaseError, ValidationError
-from processing.validation_integration import (
-    create_validation_workflow, format_validation_summary
-)
-from processing.validation_models import ValidationConfiguration
+# Removed old validation integration imports - now using InvoiceProcessor directly
 
 
 logger = logging.getLogger(__name__)
@@ -45,14 +43,74 @@ def invoice_group():
     """Invoice processing commands."""
     pass
 
+@invoice_group.command(name='extract-text')
+@click.argument('input_path', type=click.Path(exists=True), required=True)
+@click.option('--output', '-o', type=click.Path(), required=True, help='Output file for extracted text')
+@pass_context
+def extract_text(ctx, input_path, output):
+    """
+    Extract raw text from a PDF invoice.
+    """
+    from processing.pdf_processor import extract_text_from_pdf
+    try:
+        text = extract_text_from_pdf(input_path)
+        with open(output, 'w', encoding='utf-8') as f:
+            f.write(text)
+        print_success(f"Extracted text saved to: {output}")
+    except Exception as e:
+        print_error(f"Failed to extract text: {e}")
+        raise CLIError(f"Failed to extract text: {e}")
+
+@invoice_group.command(name='extract-lines')
+@click.argument('input_path', type=click.Path(exists=True), required=True)
+@click.option('--output', '-o', type=click.Path(), required=True, help='Output CSV file for extracted lines')
+@pass_context
+def extract_lines(ctx, input_path, output):
+    """
+    Extract line items from a PDF invoice and save as CSV.
+    """
+    from processing.pdf_processor import extract_lines_from_pdf
+    try:
+        lines = extract_lines_from_pdf(input_path)
+        import csv
+        with open(output, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.DictWriter(f, fieldnames=lines[0].keys() if lines else [])
+            writer.writeheader()
+            writer.writerows(lines)
+        print_success(f"Extracted lines saved to: {output}")
+    except Exception as e:
+        print_error(f"Failed to extract lines: {e}")
+        raise CLIError(f"Failed to extract lines: {e}")
+
+@invoice_group.command(name='extract-parts')
+@click.argument('input_path', type=click.Path(exists=True), required=True)
+@click.option('--output', '-o', type=click.Path(), required=True, help='Output CSV file for extracted parts')
+@pass_context
+def extract_parts(ctx, input_path, output):
+    """
+    Extract parts from a PDF invoice and save as CSV.
+    """
+    from processing.pdf_processor import extract_parts_from_pdf
+    try:
+        parts = extract_parts_from_pdf(input_path)
+        import csv
+        with open(output, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.DictWriter(f, fieldnames=parts[0].keys() if parts else [])
+            writer.writeheader()
+            writer.writerows(parts)
+        print_success(f"Extracted parts saved to: {output}")
+    except Exception as e:
+        print_error(f"Failed to extract parts: {e}")
+        raise CLIError(f"Failed to extract parts: {e}")
+
 
 @invoice_group.command()
 @click.argument('input_path', type=click.Path(exists=True), required=False)
-@click.option('--output', '-o', type=click.Path(), default='report.csv',
-              help='Output report file path')
-@click.option('--format', '-f', type=OUTPUT_FORMAT, default='csv',
+@click.option('--output', '-o', type=click.Path(), default=None,
+              help='Output report file path (defaults to documents/ directory)')
+@click.option('--format', '-f', type=OUTPUT_FORMAT, default='txt',
               help='Output format (csv, txt, json)')
-@click.option('--interactive', '-i', is_flag=True,
+@click.option('--interactive', '-i', is_flag=True, default=True,
               help='Enable interactive part discovery')
 @click.option('--collect-unknown', is_flag=True,
               help='Collect unknown parts for later review')
@@ -62,9 +120,11 @@ def invoice_group():
               default='parts_based', help='Validation mode')
 @click.option('--threshold', '-t', type=PRICE, default=Decimal('0.30'),
               help='Threshold for threshold-based mode')
+@click.option('--no-auto-open', is_flag=True,
+              help='Disable automatic opening of generated reports')
 @pass_context
 def process(ctx, input_path, output, format, interactive, collect_unknown,
-           session_id, validation_mode, threshold):
+           session_id, validation_mode, threshold, no_auto_open):
     """
     Process invoices with parts-based validation (primary command).
     
@@ -72,12 +132,18 @@ def process(ctx, input_path, output, format, interactive, collect_unknown,
     containing multiple PDF invoices, detecting pricing anomalies using
     the master parts database.
     
+    Reports are automatically saved to the documents/ directory and opened
+    in your default application unless --no-auto-open is specified.
+    
     Examples:
-        # Process a single PDF file
-        invoice-checker process invoice.pdf --output single_report.csv
+        # Process a single PDF file (saves to documents/ and auto-opens)
+        invoice-checker process invoice.pdf
         
         # Process a folder with interactive discovery
         invoice-checker process ./invoices --interactive
+        
+        # Process without auto-opening reports
+        invoice-checker process ./invoices --no-auto-open
         
         # Collect unknown parts without validation
         invoice-checker process ./invoices --collect-unknown
@@ -92,6 +158,13 @@ def process(ctx, input_path, output, format, interactive, collect_unknown,
         else:
             input_path = Path(input_path)
         
+        # Use documents directory if no output specified
+        if output is None:
+            output_path = get_documents_directory()
+            print_info(f"Reports will be saved to documents directory: {output_path}")
+        else:
+            output_path = Path(output)
+        
         # Generate session ID if not provided
         if not session_id:
             session_id = str(uuid.uuid4())
@@ -102,19 +175,28 @@ def process(ctx, input_path, output, format, interactive, collect_unknown,
         # Process invoices
         results = _process_invoices(
             input_path=input_path,
-            output_path=Path(output),
+            output_path=output_path,
             output_format=format,
             validation_mode=validation_mode,
             threshold=threshold,
             interactive=interactive,
             collect_unknown=collect_unknown,
             session_id=session_id,
-            db_manager=db_manager
+            db_manager=db_manager,
+            auto_open=not no_auto_open
         )
         
         # Display results
         display_summary("Processing Results", results)
-        print_success(f"Processing complete! Report saved to: {output}")
+        
+        # Show enhanced success message
+        if output is None:
+            print_success("Processing complete!")
+            print_info(f"Reports saved to documents directory: {get_documents_directory()}")
+            if not no_auto_open:
+                print_info("Reports have been automatically opened in your default application.")
+        else:
+            print_success(f"Processing complete! Report saved to: {output}")
         
     except UserCancelledError:
         print_info("Processing cancelled by user.")
@@ -406,100 +488,7 @@ def _discover_pdf_files(input_path: Path) -> List[Path]:
     return pdf_files
 
 
-def _create_validation_config(validation_mode: str, threshold: Decimal,
-                            interactive: bool, collect_unknown: bool,
-                            db_manager) -> ValidationConfiguration:
-    """
-    Create validation configuration based on mode and parameters.
-    
-    Args:
-        validation_mode: Validation mode ('parts_based' or 'threshold_based')
-        threshold: Price threshold for threshold-based mode
-        interactive: Enable interactive part discovery
-        collect_unknown: Enable unknown parts collection
-        db_manager: Database manager for configuration access
-        
-    Returns:
-        Configured ValidationConfiguration instance
-    """
-    if validation_mode == 'threshold_based':
-        # For threshold-based mode, create a simple configuration
-        config = ValidationConfiguration()
-        config.validation_mode = 'threshold_based'
-        config.threshold_value = threshold
-        config.price_discrepancy_warning_threshold = threshold
-        config.price_discrepancy_critical_threshold = threshold * 2
-        # Disable parts-based features for threshold mode
-        config.interactive_discovery = False
-        config.batch_collect_unknown_parts = False
-    else:
-        # Use parts-based validation with database configuration
-        config = ValidationConfiguration.from_database_config(db_manager)
-        config.validation_mode = 'parts_based'
-        config.threshold_value = threshold  # Still store threshold for reference
-        # Apply common settings for parts-based mode
-        config.interactive_discovery = interactive
-        config.batch_collect_unknown_parts = collect_unknown
-    
-    return config
-
-
-def _execute_validation_workflow(pdf_files: List[Path], config: ValidationConfiguration,
-                               db_manager, interactive: bool, output_path: Path,
-                               output_format: str) -> Dict[str, Any]:
-    """
-    Execute the validation workflow on PDF files.
-    
-    Args:
-        pdf_files: List of PDF file paths to process
-        config: Validation configuration
-        db_manager: Database manager instance
-        interactive: Enable interactive discovery
-        output_path: Path for output report
-        output_format: Output format ('csv', 'txt', etc.)
-        
-    Returns:
-        Processing results and statistics
-    """
-    # Create validation workflow
-    workflow = create_validation_workflow(db_manager, config)
-    
-    if len(pdf_files) == 1:
-        # Single file processing
-        validation_result, discovery_results = workflow.process_single_invoice(
-            pdf_files[0], interactive_discovery=interactive
-        )
-        validation_results = [validation_result]
-        
-        # Generate report manually for single file - create basic processing stats
-        processing_stats = {
-            'successfully_processed': 1,
-            'failed_processing': 0,
-            'total_processing_time': 0.0,
-            'average_processing_time': 0.0
-        }
-        
-        report_stats = workflow.report_generator.generate_all_reports(
-            validation_results, processing_stats, str(uuid.uuid4()), output_path.parent, str(output_path.parent)
-        )
-        
-        # Get validation summary
-        summary = workflow.get_validation_summary(validation_results)
-        
-        # Display validation summary
-        print_info("\n" + format_validation_summary(summary))
-        
-        return summary
-    else:
-        # Batch processing - workflow handles report generation
-        processing_stats = workflow.process_invoices_batch(
-            invoice_paths=pdf_files,
-            output_path=output_path,
-            report_format=output_format,
-            interactive_discovery=interactive
-        )
-        
-        return processing_stats
+# Removed old validation workflow functions - now using InvoiceProcessor directly
 
 
 def _generate_processing_results(validation_results: Dict[str, Any],
@@ -535,12 +524,12 @@ def _generate_processing_results(validation_results: Dict[str, Any],
 
 def _process_invoices(input_path: Path, output_path: Path, output_format: str,
                      validation_mode: str, threshold: Decimal, interactive: bool,
-                     collect_unknown: bool, session_id: str, db_manager) -> Dict[str, Any]:
+                     collect_unknown: bool, session_id: str, db_manager, auto_open: bool = True) -> Dict[str, Any]:
     """
-    Core invoice processing logic - refactored for better maintainability.
+    Core invoice processing logic using InvoiceProcessor.
     
-    This function orchestrates the complete invoice processing workflow by
-    delegating specific responsibilities to focused helper functions.
+    This function uses the InvoiceProcessor class to handle the complete
+    invoice processing workflow with proper integration.
     
     Args:
         input_path: Path to PDF file or directory containing PDFs
@@ -559,27 +548,81 @@ def _process_invoices(input_path: Path, output_path: Path, output_format: str,
     Raises:
         ProcessingError: If processing fails
     """
+    from processing.invoice_processor import InvoiceProcessor
+    
     print_info("Starting invoice processing...")
     
     try:
-        # Step 1: Discover and validate PDF files
-        pdf_files = _discover_pdf_files(input_path)
+        # Create progress callback for CLI feedback
+        def progress_callback(current: int, total: int, message: str):
+            if total > 1:  # Only show progress for batch processing
+                print_info(f"[{current}/{total}] {message}")
         
-        # Step 2: Create validation configuration
-        config = _create_validation_config(
-            validation_mode, threshold, interactive, collect_unknown, db_manager
+        # Create InvoiceProcessor with interactive mode
+        processor = InvoiceProcessor(
+            database_manager=db_manager,
+            interactive_mode=interactive,
+            progress_callback=progress_callback
         )
         
-        # Step 3: Execute validation workflow
-        validation_results = _execute_validation_workflow(
-            pdf_files, config, db_manager, interactive, output_path, output_format
-        )
-        
-        # Step 4: Generate processing results in legacy format
-        return _generate_processing_results(validation_results, output_path)
+        # Determine if single file or directory processing
+        if input_path.is_file():
+            # Single file processing
+            result = processor.process_single_invoice(input_path, output_path.parent)
+            
+            if result.success and result.validation_json:
+                # Generate report in requested format
+                reports = processor.generate_reports(
+                    result.validation_json,
+                    output_path.parent,
+                    output_path.stem
+                )
+                
+                # Return legacy format results
+                return {
+                    'files_processed': 1,
+                    'files_failed': 0,
+                    'anomalies_found': result.validation_errors,
+                    'unknown_parts': result.unknown_parts_found,
+                    'total_overcharge': Decimal('0.00'),
+                    'report_file': str(output_path),
+                    'critical_anomalies': result.validation_errors,
+                    'warning_anomalies': 0,
+                    'processing_time': result.processing_time
+                }
+            else:
+                # Handle failed processing
+                return {
+                    'files_processed': 0,
+                    'files_failed': 1,
+                    'anomalies_found': 0,
+                    'unknown_parts': 0,
+                    'total_overcharge': Decimal('0.00'),
+                    'report_file': str(output_path),
+                    'critical_anomalies': 0,
+                    'warning_anomalies': 0,
+                    'processing_time': result.processing_time,
+                    'error_message': result.error_message
+                }
+        else:
+            # Directory processing
+            batch_result = processor.process_directory(input_path, output_path.parent)
+            
+            # Return legacy format results
+            return {
+                'files_processed': batch_result.successful_files,
+                'files_failed': batch_result.failed_files,
+                'anomalies_found': batch_result.total_validation_errors,
+                'unknown_parts': batch_result.total_unknown_parts,
+                'total_overcharge': Decimal('0.00'),
+                'report_file': str(output_path),
+                'critical_anomalies': batch_result.total_validation_errors,
+                'warning_anomalies': 0,
+                'processing_time': batch_result.total_processing_time
+            }
         
     except Exception as e:
-        logger.exception(f"Validation processing failed: {e}")
+        logger.exception(f"Invoice processing failed: {e}")
         raise ProcessingError(f"Invoice processing failed: {e}")
 
 
@@ -749,44 +792,45 @@ def _process_batch(folders: List[Path], output_dir: Path, parallel: bool,
 
 def _collect_unknown_parts(input_path: Path, output_path: Path,
                           suggest_prices: bool, db_manager) -> Dict[str, Any]:
-    """Collect unknown parts from invoices using the validation engine."""
+    """Collect unknown parts from invoices using InvoiceProcessor."""
+    from processing.invoice_processor import InvoiceProcessor
+    
     print_info("Starting unknown parts collection...")
     
-    # Use the same PDF discovery logic as the main processing
     try:
-        pdf_files = _discover_pdf_files(input_path)
-    except ProcessingError as e:
-        raise ProcessingError(f"Failed to find PDF files: {e}")
-    
-    try:
-        # Create validation configuration for unknown parts collection
-        config = ValidationConfiguration.from_database_config(db_manager)
-        config.interactive_discovery = False
-        config.batch_collect_unknown_parts = True
+        # Create progress callback for CLI feedback
+        def progress_callback(current: int, total: int, message: str):
+            if total > 1:  # Only show progress for batch processing
+                print_info(f"[{current}/{total}] {message}")
         
-        # Create validation workflow
-        workflow = create_validation_workflow(db_manager, config)
-        
-        # Process invoices to collect unknown parts
-        processing_stats = workflow.process_invoices_batch(
-            invoice_paths=pdf_files,
-            output_path=output_path,
-            report_format='csv',
-            interactive_discovery=False
+        # Create InvoiceProcessor in non-interactive mode for collection
+        processor = InvoiceProcessor(
+            database_manager=db_manager,
+            interactive_mode=False,  # Don't prompt user during collection
+            progress_callback=progress_callback
         )
         
-        # Extract unknown parts information from validation results
-        # This would be collected during the validation process
-        unknown_parts_data = []
-        
-        # For now, return the processing stats
-        # In a full implementation, we would extract unknown parts from validation results
-        stats = {
-            'files_processed': processing_stats.get('successfully_processed', 0),
-            'unknown_parts_found': processing_stats.get('unknown_parts_discovered', 0),
-            'output_file': str(output_path),
-            'files_failed': processing_stats.get('failed_processing', 0)
-        }
+        # Process invoices to collect unknown parts
+        if input_path.is_file():
+            # Single file processing
+            result = processor.process_single_invoice(input_path, output_path.parent)
+            
+            stats = {
+                'files_processed': 1 if result.success else 0,
+                'unknown_parts_found': result.unknown_parts_found,
+                'output_file': str(output_path),
+                'files_failed': 0 if result.success else 1
+            }
+        else:
+            # Directory processing
+            batch_result = processor.process_directory(input_path, output_path.parent)
+            
+            stats = {
+                'files_processed': batch_result.successful_files,
+                'unknown_parts_found': batch_result.total_unknown_parts,
+                'output_file': str(output_path),
+                'files_failed': batch_result.failed_files
+            }
         
         print_info(f"Collection complete: {stats['unknown_parts_found']} unknown parts found")
         

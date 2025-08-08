@@ -452,8 +452,186 @@ def maintenance(ctx, vacuum, cleanup_logs, verify_integrity, auto_backup):
         raise CLIError(f"Failed to perform maintenance: {e}")
 
 
+@database_group.command()
+@click.option('--force', is_flag=True, help='Skip confirmation prompt')
+@click.option('--keep-config', is_flag=True, default=True,
+              help='Keep configuration settings (default: true)')
+@pass_context
+def reset(ctx, force, keep_config):
+    """
+    Reset (erase) the current database with appropriate confirmations.
+    
+    This command will completely erase the current database and recreate
+    it with default schema. All parts, discovery logs, and optionally
+    configuration will be lost.
+    
+    Examples:
+        # Reset database with confirmation
+        invoice-checker database reset
+        
+        # Force reset without confirmation
+        invoice-checker database reset --force
+        
+        # Reset database but remove all configuration too
+        invoice-checker database reset --no-keep-config
+    """
+    try:
+        db_manager = ctx.get_db_manager()
+        
+        # Get current database stats for confirmation
+        try:
+            stats = db_manager.get_database_stats()
+            parts_count = stats.get('total_parts', 0)
+            config_count = stats.get('config_entries', 0)
+            logs_count = stats.get('discovery_log_entries', 0)
+        except Exception:
+            # If we can't get stats, assume database exists but is corrupted
+            parts_count = "unknown"
+            config_count = "unknown"
+            logs_count = "unknown"
+        
+        # Show what will be lost
+        print_warning("DATABASE RESET WARNING")
+        print_warning("=" * 50)
+        print_warning("This operation will PERMANENTLY DELETE all data in the database:")
+        print_warning(f"  • Parts: {parts_count}")
+        print_warning(f"  • Discovery logs: {logs_count}")
+        if not keep_config:
+            print_warning(f"  • Configuration settings: {config_count}")
+        else:
+            print_info(f"  • Configuration settings: {config_count} (will be preserved)")
+        print_warning("")
+        print_warning("This action CANNOT be undone!")
+        
+        # Confirm reset
+        if not force:
+            print_warning("Are you absolutely sure you want to reset the database?")
+            confirmation = click.prompt(
+                "Type 'RESET' to confirm database reset (or 'cancel' to abort)",
+                type=str,
+                default="cancel"
+            )
+            if confirmation.upper() != "RESET":
+                print_info("Database reset cancelled.")
+                return
+        
+        # Create backup before reset
+        print_info("Creating backup before reset...")
+        try:
+            backup_path = db_manager.create_backup()
+            print_info(f"Backup created: {backup_path}")
+        except Exception as e:
+            print_warning(f"Failed to create backup: {e}")
+            if not force and not click.confirm("Continue without backup?", default=False):
+                print_info("Database reset cancelled.")
+                return
+        
+        # Perform reset
+        progress = MultiStepProgress([
+            "Backing up configuration" if keep_config else "Preparing reset",
+            "Resetting database",
+            "Restoring configuration" if keep_config else "Initializing database",
+            "Verifying reset"
+        ], "Database Reset")
+        
+        try:
+            # Step 1: Backup configuration if keeping it
+            config_backup = None
+            if keep_config:
+                progress.start_step("Backing up configuration", "Saving current configuration")
+                try:
+                    config_backup = db_manager.list_config()
+                    progress.complete_step(True, f"Backed up {len(config_backup)} configuration entries")
+                except Exception as e:
+                    progress.complete_step(False, f"Configuration backup failed: {e}")
+                    config_backup = None
+            else:
+                progress.start_step("Preparing reset", "Preparing database reset")
+                progress.complete_step(True, "Ready to reset")
+            
+            # Step 2: Reset database
+            progress.start_step("Resetting database", "Erasing and recreating database")
+            db_manager.reset_database()
+            progress.complete_step(True, "Database reset completed")
+            
+            # Step 3: Restore configuration if keeping it
+            if keep_config and config_backup:
+                progress.start_step("Restoring configuration", "Restoring configuration settings")
+                restored_count = 0
+                for config in config_backup:
+                    try:
+                        db_manager.set_config_value(
+                            key=config.key,
+                            value=config.get_typed_value(),
+                            data_type=config.data_type,
+                            description=config.description,
+                            category=config.category
+                        )
+                        restored_count += 1
+                    except Exception as e:
+                        logger.warning(f"Failed to restore config {config.key}: {e}")
+                progress.complete_step(True, f"Restored {restored_count} configuration entries")
+            else:
+                progress.start_step("Initializing database", "Setting up default configuration")
+                # Initialize with default configuration
+                from database.models import DEFAULT_CONFIG
+                initialized_count = 0
+                for key, default_config in DEFAULT_CONFIG.items():
+                    try:
+                        db_manager.set_config_value(
+                            key=default_config.key,
+                            value=default_config.get_typed_value(),
+                            data_type=default_config.data_type,
+                            description=default_config.description,
+                            category=default_config.category
+                        )
+                        initialized_count += 1
+                    except Exception as e:
+                        logger.warning(f"Failed to initialize config {key}: {e}")
+                progress.complete_step(True, f"Initialized {initialized_count} default configurations")
+            
+            # Step 4: Verify reset
+            progress.start_step("Verifying reset", "Checking database integrity")
+            try:
+                new_stats = db_manager.get_database_stats()
+                expected_parts = 0
+                expected_logs = 0
+                actual_parts = new_stats.get('total_parts', 0)
+                actual_logs = new_stats.get('discovery_log_entries', 0)
+                
+                if actual_parts == expected_parts and actual_logs == expected_logs:
+                    progress.complete_step(True, "Database reset verified successfully")
+                else:
+                    progress.complete_step(False, f"Verification failed: {actual_parts} parts, {actual_logs} logs")
+            except Exception as e:
+                progress.complete_step(False, f"Verification failed: {e}")
+            
+            progress.finish(True, "Database reset completed successfully")
+            
+        except Exception as e:
+            progress.finish(False, f"Database reset failed: {e}")
+            raise
+        
+        print_success("Database has been successfully reset!")
+        print_info("All parts and discovery logs have been removed.")
+        if keep_config:
+            print_info("Configuration settings have been preserved.")
+        else:
+            print_info("Configuration has been reset to defaults.")
+        
+        if 'backup_path' in locals():
+            print_info(f"A backup was created before reset: {backup_path}")
+        
+    except DatabaseError as e:
+        raise CLIError(f"Database error: {e}")
+    except Exception as e:
+        logger.exception("Failed to reset database")
+        raise CLIError(f"Failed to reset database: {e}")
+
+
 # Add individual commands to the group
 database_group.add_command(backup)
 database_group.add_command(restore)
 database_group.add_command(migrate)
 database_group.add_command(maintenance)
+database_group.add_command(reset)

@@ -1,19 +1,21 @@
 # Invoice Rate Detection System - User Manual
 
-**Version 1.0.0**  
-**Last Updated:** July 30, 2025
+**Version 2.0.0**
+**Last Updated:** January 8, 2025
 
 ---
 
 ## Table of Contents
 
 1. [Installation and Setup](#installation-and-setup)
-2. [Parts Discovery and Database Setup](#parts-discovery-and-database-setup)
+2. [Getting Started](#getting-started)
 3. [Processing Invoices](#processing-invoices)
-4. [Backing Up and Restoring](#backing-up-and-restoring)
-5. [Advanced Features](#advanced-features)
-6. [Troubleshooting](#troubleshooting)
-7. [Command Reference](#command-reference)
+4. [Parts Database Management](#parts-database-management)
+5. [Database Operations](#database-operations)
+6. [Discovery Management](#discovery-management)
+7. [Configuration](#configuration)
+8. [Troubleshooting](#troubleshooting)
+9. [Command Reference](#command-reference)
 
 ---
 
@@ -22,182 +24,354 @@
 ### System Requirements
 
 - **Operating System**: Windows 10+, macOS 10.14+, or Linux (Ubuntu 18.04+)
-- **Python**: Version 3.8 or higher
 - **Memory**: Minimum 512MB RAM
 - **Storage**: 100MB free disk space
 - **Permissions**: Read access to invoice files, write access for reports and database
+- **Internet Connection**: Required for initial setup (downloads Python dependencies automatically)
 
-### Installation Instructions
+### Quick Start Installation (Recommended)
 
-#### Windows Installation
+The Clarity Invoice Validator includes bootstrap scripts that automatically handle all installation requirements. This is the easiest way to get started.
 
-1. **Install Python** (if not already installed):
-   - Download Python from [python.org](https://python.org)
-   - During installation, check "Add Python to PATH"
-   - Verify installation: Open Command Prompt and run `python --version`
+#### For Windows Users
 
+1. **Download and extract** the Clarity Invoice Validator application
+2. **Double-click** [`Clarity Invoice Validator.bat`](Clarity%20Invoice%20Validator.bat) to launch
+3. **Follow the on-screen prompts** - the system will automatically:
+   - Check for existing installations
+   - Download and install required components
+   - Set up the application in the appropriate location
+   - Launch the invoice validator
+
+#### For macOS and Linux Users
+
+1. **Download and extract** the Clarity Invoice Validator application
+2. **Double-click** [`Clarity Invoice Validator.command`](Clarity%20Invoice%20Validator.command) to launch
+   - On macOS, you may need to right-click and select "Open" the first time
+   - On Linux, ensure the file has execute permissions: `chmod +x "Clarity Invoice Validator.command"`
+3. **Follow the on-screen prompts** - the system will automatically:
+   - Check for existing installations
+   - Download and install required components
+   - Set up the application in the appropriate location
+   - Launch the invoice validator
+
+### What the Bootstrap Scripts Do
+
+The bootstrap scripts handle all the technical setup automatically:
+
+- **Dependency Management**: Automatically installs Python, UV package manager, and all required libraries
+- **Location Management**: Installs the application in the standard location for your operating system:
+  - **Windows**: `%LOCALAPPDATA%\Programs\InvoiceRateDetector`
+  - **macOS**: `~/Applications/InvoiceRateDetector`
+  - **Linux**: `~/.local/bin/InvoiceRateDetector`
+- **Update Handling**: Checks for and downloads the latest launcher scripts
+- **Error Recovery**: Provides fallback options if network downloads fail
+
+### Manual Installation (Advanced Users)
+
+If you prefer to install manually or need custom configuration:
+
+#### Prerequisites
+
+1. **Install Python 3.8+** from [python.org](https://python.org)
 2. **Install UV Package Manager**:
-   ```cmd
+   ```bash
    pip install uv
    ```
 
-3. **Download and Setup the Application**:
-   ```cmd
-   # Download the application (replace with actual download location)
-   cd C:\Users\YourName\Downloads
-   unzip invoice-rate-detection.zip
-   cd invoice-rate-detection
-   
-   # Install dependencies
+#### Setup Steps
+
+1. **Download and extract the application**
+2. **Navigate to the application directory**
+3. **Install dependencies**:
+   ```bash
    uv sync
    ```
-
-4. **Test Installation**:
-   ```cmd
-   uv run invoice-checker --help
-   ```
-
-#### macOS Installation
-
-1. **Install Python** (using Homebrew - recommended):
-   ```bash
-   # Install Homebrew if not already installed
-   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-   
-   # Install Python
-   brew install python
-   ```
-
-2. **Install UV Package Manager**:
-   ```bash
-   pip3 install uv
-   ```
-
-3. **Download and Setup the Application**:
-   ```bash
-   # Download and extract the application
-   cd ~/Downloads
-   unzip invoice-rate-detection.zip
-   cd invoice-rate-detection
-   
-   # Install dependencies
-   uv sync
-   ```
-
-4. **Test Installation**:
-   ```bash
-   uv run invoice-checker --help
-   ```
-
-#### Linux Installation (Ubuntu/Debian)
-
-1. **Install Python and Dependencies**:
-   ```bash
-   sudo apt update
-   sudo apt install python3 python3-pip python3-venv
-   ```
-
-2. **Install UV Package Manager**:
-   ```bash
-   pip3 install uv
-   ```
-
-3. **Download and Setup the Application**:
-   ```bash
-   # Download and extract the application
-   cd ~/Downloads
-   unzip invoice-rate-detection.zip
-   cd invoice-rate-detection
-   
-   # Install dependencies
-   uv sync
-   ```
-
-4. **Test Installation**:
+4. **Test installation**:
    ```bash
    uv run invoice-checker --help
    ```
 
 ### Initial Configuration
 
-After installation, test the basic functionality:
+After installation (whether using bootstrap scripts or manual installation), verify the system is working:
 
 ```bash
-# Test the modern CLI system
-uv run invoice-checker --help
-
-# Check system status
+# Check system status and database connectivity
 uv run invoice-checker status
+
+# View available commands
+uv run invoice-checker --help
 ```
 
-The modern CLI system provides comprehensive parts-based validation, interactive discovery, and advanced reporting features.
+The system automatically creates a SQLite database (`invoice_detection.db`) on first run.
+
+### Installation Locations
+
+The bootstrap scripts install the application in standard locations:
+
+| Operating System | Installation Path |
+|------------------|-------------------|
+| **Windows** | `%LOCALAPPDATA%\Programs\InvoiceRateDetector` |
+| **macOS** | `~/Applications/InvoiceRateDetector` |
+| **Linux** | `~/.local/bin/InvoiceRateDetector` |
+
+### Troubleshooting Installation
+
+If the bootstrap scripts encounter issues:
+
+1. **Check Internet Connection**: The scripts download components from GitHub
+2. **Antivirus Software**: Some antivirus programs may block the downloads
+3. **Permissions**: Ensure you have write permissions to the installation directory
+4. **Manual Download**: If automatic download fails, the scripts provide manual download URLs
+
+For detailed troubleshooting, see the [Troubleshooting](#troubleshooting) section.
 
 ---
 
-## Parts Discovery and Database Setup
+## Getting Started
 
-The Invoice Rate Detection System uses a master parts database to validate invoice line items against authorized prices. This section covers setting up and managing your parts database.
+### First Time Setup
+
+If you used the bootstrap scripts ([`Clarity Invoice Validator.command`](Clarity%20Invoice%20Validator.command) for macOS/Linux or [`Clarity Invoice Validator.bat`](Clarity%20Invoice%20Validator.bat) for Windows), the system is already set up and ready to use. Simply run the bootstrap script again to launch the application.
+
+### Quick Start Workflow
+
+1. **Launch the application**:
+   - **Windows**: Double-click [`Clarity Invoice Validator.bat`](Clarity%20Invoice%20Validator.bat)
+   - **macOS/Linux**: Double-click [`Clarity Invoice Validator.command`](Clarity%20Invoice%20Validator.command)
+   - **Manual**: Navigate to installation directory and run `uv run invoice-checker`
+
+2. **Check system status** (first time):
+   ```bash
+   uv run invoice-checker status
+   ```
+
+3. **Add some parts to the database**:
+   ```bash
+   uv run invoice-checker parts add GP0171NAVY 15.50 --description "Navy Work Pants"
+   ```
+
+4. **Process invoices**:
+   ```bash
+   uv run invoice-checker invoice process ./invoices --output report.csv
+   ```
+
+5. **Review the generated report** in Excel or a text editor
+
+### Interactive Mode (Recommended for New Users)
+
+The easiest way to get started is with interactive mode. This provides a guided experience:
+
+```bash
+uv run invoice-checker
+```
+
+The interactive workflow guides you through:
+- Selecting invoice files or folders
+- Configuring output options
+- Processing with automatic parts discovery
+- Adding new parts to your database as they're discovered
+
+### Bootstrap Script Features
+
+The bootstrap scripts provide additional convenience:
+
+- **Automatic Updates**: Check for and download the latest version
+- **Environment Detection**: Automatically configure for your operating system
+- **Error Recovery**: Provide fallback options if issues occur
+- **User-Friendly Interface**: Colored output and clear progress indicators
+- **Installation Management**: Handle all technical setup automatically
+
+### Next Steps
+
+After your first successful run:
+
+1. **Build your parts database** by processing existing invoices with discovery mode
+2. **Configure validation settings** to match your business requirements
+3. **Set up regular processing workflows** for ongoing invoice validation
+4. **Review the generated reports** to identify pricing anomalies
+
+For detailed instructions on each of these steps, see the relevant sections in this manual.
+
+---
+
+## Processing Invoices
+
+This section covers the core functionality of processing PDF invoices to detect pricing anomalies.
+
+### Basic Invoice Processing
+
+#### Interactive Mode (Recommended for beginners)
+
+Run without arguments for guided processing:
+
+```bash
+uv run invoice-checker
+```
+
+This launches an interactive workflow that guides you through:
+- Selecting invoice files or folders
+- Configuring output options
+- Processing with automatic parts discovery
+
+#### Command-Line Processing
+
+For direct processing:
+
+```bash
+# Process a single PDF file (saves to documents/ directory and auto-opens)
+uv run invoice-checker invoice process invoice.pdf
+
+# Process a folder of PDFs (saves to documents/ directory and auto-opens)
+uv run invoice-checker invoice process ./invoices
+
+# Process with interactive discovery enabled
+uv run invoice-checker invoice process ./invoices --interactive
+
+# Process with different output formats
+uv run invoice-checker invoice process ./invoices --format json
+uv run invoice-checker invoice process ./invoices --format txt
+
+# Process without auto-opening reports
+uv run invoice-checker invoice process ./invoices --no-auto-open
+
+# Process with custom output location (overrides documents/ directory)
+uv run invoice-checker invoice process ./invoices --output custom_report.csv
+```
+
+#### Batch Processing
+
+Process multiple folders simultaneously:
+
+```bash
+# Process multiple folders
+uv run invoice-checker invoice batch ./invoice_folders --output-dir ./reports
+
+# Enable parallel processing for faster results
+uv run invoice-checker invoice batch ./invoice_folders --parallel --max-workers 4
+
+# Continue processing even if some folders fail
+uv run invoice-checker invoice batch ./invoice_folders --continue-on-error
+```
+
+### Unknown Parts Discovery
+
+When processing invoices, you may encounter parts not in your database:
+
+#### Collect Unknown Parts
+
+```bash
+# Collect unknown parts from a single file
+uv run invoice-checker invoice collect-unknowns invoice.pdf --output unknowns.csv
+
+# Collect unknown parts from a folder
+uv run invoice-checker invoice collect-unknowns ./invoices --output unknowns.csv
+
+# Include price suggestions
+uv run invoice-checker invoice collect-unknowns ./invoices --suggest-prices --output unknowns.csv
+```
+
+#### Review Discovered Parts
+
+```bash
+# Review unknown parts from recent processing
+uv run invoice-checker discovery review
+
+# Review specific discovery session
+uv run invoice-checker discovery review --session-id abc123
+
+# Export discovery data
+uv run invoice-checker discovery export --output discovery_data.csv
+```
+
+### Understanding Reports
+
+The system generates comprehensive reports in CSV or TXT format and automatically saves them to the `documents/` directory for easy access.
+
+#### Report Location and Auto-Opening
+
+**📁 Default Location**: All reports are automatically saved to the `documents/` directory in your current working directory.
+
+**🚀 Auto-Opening**: Reports are automatically opened in your default application:
+- **CSV files** open in Excel (or your default spreadsheet application)
+- **TXT files** open in Notepad (or your default text editor)
+- **JSON files** open in your default JSON viewer
+
+**🔧 Control Options**:
+- Use `--no-auto-open` to disable automatic opening
+- Use `--output` to specify a custom location (overrides documents/ directory)
+
+#### CSV Report Columns
+
+| Column | Description |
+|--------|-------------|
+| Invoice # | Invoice number from the PDF |
+| Date | Invoice date |
+| Line Item | Part number/item code |
+| Rate | Price per unit from invoice |
+| Qty | Quantity ordered |
+| Validation Result | Pass/Fail status |
+| Issue Type | Type of validation issue found |
+| Description | Item description |
+| PDF File | Source PDF filename |
+
+#### Report Analysis
+
+```bash
+# View processing results
+uv run invoice-checker status
+
+# Review discovery sessions
+uv run invoice-checker discovery sessions
+
+# Get discovery statistics
+uv run invoice-checker discovery stats --days 7
+```
+
+#### Finding Your Reports
+
+Reports are saved with timestamps for easy identification:
+- **Location**: `./documents/`
+- **Naming**: `{invoice_number}_{report_type}_{timestamp}.{format}`
+- **Example**: `INV001_analysis_20250108_143022.csv`
+
+You can always find your reports in the documents directory, even if auto-opening fails.
+
+---
+
+## Parts Database Management
+
+The system uses a SQLite database to store parts information for validation. This section covers managing your parts database.
 
 ### Understanding the Parts Database
 
-The system stores parts information in a local SQLite database with the following key data:
-- **Part Number**: Unique identifier for each part
-- **Authorized Price**: The approved price for the part
+The system stores parts with the following information:
+- **Part Number**: Unique identifier (can be composite key)
+- **Authorized Price**: Expected price for validation
 - **Description**: Human-readable description
-- **Category**: Optional grouping (e.g., "Clothing", "Tools")
+- **Category**: Optional grouping
 - **Source**: How the part was added (manual, discovered, imported)
+- **Active Status**: Whether the part is currently active
 
-### Initial Database Setup
+### Adding Parts
 
-When you first run the system, it automatically creates an empty database. You can populate it in several ways:
-
-#### Method 1: Interactive Part Discovery (Recommended)
-
-This is the easiest way to build your database while processing invoices:
-
-1. **Start Processing with Discovery Enabled**:
-   ```bash
-   uv run invoice-checker process ./invoices --interactive
-   ```
-
-2. **When Unknown Parts are Found**, you'll see prompts like:
-   ```
-   ┌─ Unknown Part Discovered ─────────────────────────────────────┐
-   │ Part Number    │ GS0448                                       │
-   │ Description    │ SHIRT WORK LS BTN COTTON                     │
-   │ Discovered Price│ $15.50                                      │
-   │ Quantity       │ 2                                            │
-   │ Invoice Number │ 5790256943                                   │
-   └────────────────┴──────────────────────────────────────────────┘
-   
-   What would you like to do with this unknown part?
-   1. Add to database now (with full details)
-   2. Mark for later review (collect for batch processing)
-   3. Skip this part (don't add to database)
-   ```
-
-3. **Choose Option 1** to add parts immediately, or **Option 2** to review later
-
-#### Method 2: Manual Part Addition
-
-Add individual parts manually:
+#### Manual Addition
 
 ```bash
 # Add a basic part
 uv run invoice-checker parts add GP0171NAVY 15.50
 
-# Add a part with full details
+# Add with full details
 uv run invoice-checker parts add GP0171NAVY 15.50 \
   --description "Navy Work Pants" \
   --category "Clothing" \
   --notes "Standard work uniform item"
 ```
 
-#### Method 3: Bulk Import from CSV
+#### Bulk Import from CSV
 
-If you have existing parts data in a spreadsheet:
-
-1. **Create a CSV file** with the following columns:
+1. **Create a CSV file** with required columns:
    ```csv
    part_number,authorized_price,description,category,notes
    GP0171NAVY,15.50,Navy Work Pants,Clothing,Standard uniform
@@ -208,16 +382,15 @@ If you have existing parts data in a spreadsheet:
 2. **Import the CSV**:
    ```bash
    uv run invoice-checker parts import parts.csv
+   
+   # Update existing parts during import
+   uv run invoice-checker parts import parts.csv --update-existing
+   
+   # Preview import without making changes
+   uv run invoice-checker parts import parts.csv --dry-run
    ```
 
-3. **Verify the import**:
-   ```bash
-   uv run invoice-checker parts list
-   ```
-
-### Managing Your Parts Database
-
-#### Viewing Parts
+### Viewing and Searching Parts
 
 ```bash
 # List all active parts
@@ -226,14 +399,17 @@ uv run invoice-checker parts list
 # List parts in a specific category
 uv run invoice-checker parts list --category "Clothing"
 
+# Include inactive parts
+uv run invoice-checker parts list --include-inactive
+
 # Get detailed information about a specific part
 uv run invoice-checker parts get GP0171NAVY
 
-# Export parts to CSV for backup or editing
-uv run invoice-checker parts export my_parts.csv
+# Show part history
+uv run invoice-checker parts get GP0171NAVY --include-history
 ```
 
-#### Updating Parts
+### Updating Parts
 
 ```bash
 # Update a part's price
@@ -247,11 +423,53 @@ uv run invoice-checker parts update GP0171NAVY \
 
 # Deactivate a part (soft delete)
 uv run invoice-checker parts update GP0171NAVY --deactivate
+
+# Reactivate a part
+uv run invoice-checker parts update GP0171NAVY --activate
 ```
 
-#### Database Statistics
+### Bulk Operations
 
-Monitor your database growth:
+#### Bulk Updates
+
+```bash
+# Update multiple parts from CSV
+uv run invoice-checker parts bulk-update price_updates.csv --field price
+
+# Update multiple fields
+uv run invoice-checker parts bulk-update updates.csv --field price --field description
+
+# Preview changes before applying
+uv run invoice-checker parts bulk-update updates.csv --field price --dry-run
+```
+
+#### Bulk Deletion
+
+```bash
+# Soft delete multiple parts
+uv run invoice-checker parts bulk-delete parts_to_remove.csv
+
+# Permanently delete parts
+uv run invoice-checker parts bulk-delete parts_to_remove.csv --hard
+
+# Force deletion without confirmation
+uv run invoice-checker parts bulk-delete parts_to_remove.csv --force
+```
+
+### Export and Backup
+
+```bash
+# Export all active parts to CSV
+uv run invoice-checker parts export all_parts.csv
+
+# Export all parts including inactive
+uv run invoice-checker parts export all_parts.csv --include-inactive
+
+# Export specific category
+uv run invoice-checker parts export clothing_parts.csv --category "Clothing"
+```
+
+### Database Statistics
 
 ```bash
 # Show overall statistics
@@ -263,212 +481,11 @@ uv run invoice-checker parts stats --category "Clothing"
 
 ---
 
-## Processing Invoices
+## Database Operations
 
-This section covers the core functionality of processing PDF invoices to detect pricing anomalies.
+The system provides comprehensive database management capabilities.
 
-### Basic Invoice Processing
-
-#### Simple Processing (Interactive Mode)
-
-For first-time users or occasional processing:
-
-1. **Start Interactive Mode**:
-   ```bash
-   uv run invoice-checker
-   ```
-
-2. **Follow the Prompts**:
-   - **Step 1**: Select your invoice folder
-   - **Step 2**: Configure output format and location
-   - **Step 3**: Choose validation mode (parts-based recommended)
-   - **Step 4**: Enable/disable interactive part discovery
-   - **Step 5**: Processing begins automatically
-
-3. **Review Results**: The system will show a summary and offer next actions
-
-#### Command-Line Processing
-
-For regular use or automation:
-
-```bash
-# Basic processing with parts-based validation
-uv run invoice-checker process ./invoices --output report.csv
-
-# Process with interactive discovery enabled
-uv run invoice-checker process ./invoices --interactive --output report.csv
-
-# Process a single invoice file
-uv run invoice-checker process invoice.pdf --output single_report.csv
-
-# Process a single file with interactive discovery
-uv run invoice-checker process invoice.pdf --interactive --output report.csv
-
-# Process a single file with custom threshold
-uv run invoice-checker process invoice.pdf --threshold 0.20 --output report.csv
-```
-
-### Single File Processing
-
-The system supports processing individual PDF invoice files, which is particularly useful for:
-- **Urgent invoice validation**: Quick processing of time-sensitive invoices
-- **Problem file troubleshooting**: Isolating and debugging specific invoice issues
-- **New supplier testing**: Testing invoices from new suppliers before batch processing
-- **Interactive part discovery**: Adding new parts with immediate feedback
-
-#### Single File Examples
-
-```bash
-# Basic single file processing
-uv run invoice-checker process invoice_001.pdf --output report.csv
-
-# Single file with JSON output
-uv run invoice-checker process invoice_001.pdf --format json --output report.json
-
-# Single file with threshold validation
-uv run invoice-checker process invoice_001.pdf --validation-mode threshold_based --threshold 0.15
-
-# Collect unknown parts from single file
-uv run invoice-checker collect-unknowns problem_invoice.pdf --suggest-prices --output unknowns.csv
-```
-
-### Advanced Processing Options
-
-#### Batch Processing Multiple Folders
-
-Process multiple folders of invoices simultaneously:
-
-```bash
-# Process all folders in a directory (sequential)
-uv run invoice-checker batch ./invoice_folders --output-dir ./reports
-
-# Process with parallel processing (faster)
-uv run invoice-checker batch ./invoice_folders --parallel --max-workers 4
-
-# Continue processing even if some folders fail
-uv run invoice-checker batch ./invoice_folders --continue-on-error
-```
-
-#### Validation Modes
-
-The system supports two validation modes:
-
-1. **Parts-Based Validation** (Recommended):
-   - Compares invoice prices against your parts database
-   - Identifies unknown parts for addition to database
-   - Provides precise anomaly detection
-
-   ```bash
-   uv run invoice-checker process ./invoices --validation-mode parts_based
-   ```
-
-2. **Threshold-Based Validation** (Legacy):
-   - Flags any line item above a specified threshold
-   - Simpler but less precise
-   - Useful for initial screening
-
-   ```bash
-   uv run invoice-checker process ./invoices --validation-mode threshold_based --threshold 0.30
-   ```
-
-#### Unknown Parts Handling
-
-When processing invoices, you may encounter parts not in your database:
-
-1. **Interactive Mode**: Prompts you to add parts immediately
-2. **Batch Collection Mode**: Collects unknown parts for later review
-3. **Collection Only Mode**: Just identifies unknown parts without validation
-
-```bash
-# Collect unknown parts from single file
-uv run invoice-checker collect-unknowns invoice.pdf --output single_unknowns.csv
-
-# Collect unknown parts from folder
-uv run invoice-checker collect-unknowns ./invoices --output unknown_parts.csv
-
-# Include price suggestions for single file
-uv run invoice-checker collect-unknowns invoice.pdf --suggest-prices --output unknowns_with_prices.csv
-
-# Include price suggestions for folder
-uv run invoice-checker collect-unknowns ./invoices --suggest-prices --output unknown_parts.csv
-```
-
-### Understanding Reports
-
-#### CSV Report Format
-
-The CSV report includes these columns:
-
-| Column | Description |
-|--------|-------------|
-| Invoice # | Invoice number from the PDF |
-| Date | Invoice date |
-| Line Item | Part number/item code |
-| Rate | Price per unit from invoice |
-| Qty | Quantity ordered |
-| Overcharge | Calculated overcharge amount |
-| Description | Item description |
-| PDF File | Source PDF filename |
-
-#### Report Analysis
-
-```bash
-# View processing results
-uv run invoice-checker status
-
-# Review recent discovery sessions
-uv run invoice-checker discovery sessions
-
-# Get statistics on discovered parts
-uv run invoice-checker discovery stats --days 7
-```
-
-### Processing Workflows
-
-#### Daily Processing Workflow
-
-1. **Place new invoices** in your designated folder
-2. **Run processing**:
-   ```bash
-   uv run invoice-checker process ./daily_invoices --interactive
-   ```
-3. **Review and add unknown parts** as prompted
-4. **Check the generated report** for anomalies
-5. **Archive processed invoices** to avoid reprocessing
-
-#### Single File Processing Workflow
-
-1. **Identify the specific invoice** that needs processing
-2. **Process the individual file**:
-   ```bash
-   uv run invoice-checker process urgent_invoice.pdf --interactive --output urgent_report.csv
-   ```
-3. **Review results immediately** for quick decision making
-4. **Add any unknown parts** discovered during processing
-5. **Move processed file** to appropriate folder
-
-#### Weekly Review Workflow
-
-1. **Review discovery statistics**:
-   ```bash
-   uv run invoice-checker discovery stats --days 7
-   ```
-2. **Export parts database** for backup:
-   ```bash
-   uv run invoice-checker parts export weekly_backup.csv
-   ```
-3. **Review and clean up** old discovery sessions:
-   ```bash
-   uv run invoice-checker discovery sessions --limit 20
-   ```
-
----
-
-## Backing Up and Restoring
-
-Regular backups protect your parts database and configuration settings.
-
-### Database Backup
+### Backup and Restore
 
 #### Creating Backups
 
@@ -476,99 +493,48 @@ Regular backups protect your parts database and configuration settings.
 # Create a standard backup
 uv run invoice-checker database backup
 
-# Create a backup with custom name and location
-uv run invoice-checker database backup ./backups/backup_2025_07_30.db
+# Create a backup with custom location
+uv run invoice-checker database backup ./backups/backup_2025_01_08.db
 
-# Create a compressed backup (smaller file size)
+# Create a compressed backup
 uv run invoice-checker database backup --compress
 
-# Create backup including discovery logs
+# Include discovery logs in backup
 uv run invoice-checker database backup --include-logs
 ```
-
-#### Automatic Backup Scheduling
-
-**Windows (Task Scheduler)**:
-1. Open Task Scheduler
-2. Create Basic Task
-3. Set trigger (daily/weekly)
-4. Set action to run:
-   ```cmd
-   uv run invoice-checker database backup
-   ```
-
-**macOS/Linux (Cron)**:
-```bash
-# Edit crontab
-crontab -e
-
-# Add daily backup at 2 AM
-0 2 * * * cd /path/to/invoice-rate-detection && uv run invoice-checker database backup
-```
-
-### Database Restore
 
 #### Restoring from Backup
 
 ```bash
 # Restore from a backup file
-uv run invoice-checker database restore backup_2025_07_30.db
+uv run invoice-checker database restore backup_2025_01_08.db
 
 # Force restore without confirmation
-uv run invoice-checker database restore backup_2025_07_30.db --force
+uv run invoice-checker database restore backup_2025_01_08.db --force
 
-# Skip backup verification (faster but less safe)
-uv run invoice-checker database restore backup_2025_07_30.db --no-verify
+# Skip backup verification
+uv run invoice-checker database restore backup_2025_01_08.db --no-verify
 ```
 
 **⚠️ Important**: Restoring replaces your current database. The system automatically creates a pre-restore backup for safety.
 
-### Parts Data Backup
-
-#### Export Parts to CSV
-
-```bash
-# Export all active parts
-uv run invoice-checker parts export all_parts.csv
-
-# Export all parts including inactive
-uv run invoice-checker parts export all_parts.csv --include-inactive
-
-# Export specific category
-uv run invoice-checker parts export clothing_parts.csv --category "Clothing"
-```
-
-#### Import Parts from CSV
-
-```bash
-# Import new parts
-uv run invoice-checker parts import new_parts.csv
-
-# Import and update existing parts
-uv run invoice-checker parts import updated_parts.csv --update-existing
-
-# Test import without making changes
-uv run invoice-checker parts import test_parts.csv --dry-run
-```
-
 ### Database Maintenance
-
-#### Regular Maintenance
 
 ```bash
 # Run all maintenance tasks
 uv run invoice-checker database maintenance
 
 # Run specific maintenance tasks
-uv run invoice-checker database maintenance --no-cleanup-logs --no-verify-integrity
+uv run invoice-checker database maintenance --vacuum --cleanup-logs
+
+# Verify database integrity
+uv run invoice-checker database maintenance --verify-integrity
 
 # Skip automatic backup during maintenance
 uv run invoice-checker database maintenance --no-auto-backup
 ```
 
-#### Database Migration
-
-When updating to newer versions:
+### Database Migration
 
 ```bash
 # Check current database version
@@ -577,9 +543,149 @@ uv run invoice-checker database migrate --dry-run
 # Migrate to latest version
 uv run invoice-checker database migrate
 
-# Migrate to specific version
-uv run invoice-checker database migrate --to-version 2.0
+# Create backup before migration
+uv run invoice-checker database migrate --backup-first
 ```
+
+### Database Reset
+
+```bash
+# Reset database (with confirmation)
+uv run invoice-checker database reset
+
+# Force reset without confirmation
+uv run invoice-checker database reset --force
+
+# Keep configuration settings
+uv run invoice-checker database reset --keep-config
+```
+
+---
+
+## Discovery Management
+
+The system tracks unknown parts discovered during processing for later review.
+
+### Reviewing Discovered Parts
+
+```bash
+# Review unknown parts from recent processing
+uv run invoice-checker discovery review
+
+# Review specific discovery session
+uv run invoice-checker discovery review --session-id abc123
+
+# Interactive review with prompts to add parts
+uv run invoice-checker discovery review --interactive
+
+# Export unknown parts to file
+uv run invoice-checker discovery review --output unknowns.csv
+```
+
+### Discovery Sessions
+
+```bash
+# List recent discovery sessions
+uv run invoice-checker discovery sessions
+
+# Show detailed session information
+uv run invoice-checker discovery sessions --detailed
+
+# Limit number of sessions shown
+uv run invoice-checker discovery sessions --limit 10
+```
+
+### Discovery Statistics
+
+```bash
+# Show overall discovery statistics
+uv run invoice-checker discovery stats
+
+# Show statistics for specific time period
+uv run invoice-checker discovery stats --days 30
+
+# Show statistics for specific session
+uv run invoice-checker discovery stats --session-id abc123
+```
+
+### Export Discovery Data
+
+```bash
+# Export all discovery data
+uv run invoice-checker discovery export --output discovery_data.csv
+
+# Export specific session
+uv run invoice-checker discovery export --session-id abc123 --output session_data.csv
+
+# Include parts that were added to database
+uv run invoice-checker discovery export --include-added --output complete_data.csv
+```
+
+---
+
+## Configuration
+
+The system stores configuration settings in the database for persistence.
+
+### Viewing Configuration
+
+```bash
+# List all configuration settings
+uv run invoice-checker config list
+
+# List settings in a specific category
+uv run invoice-checker config list --category "validation"
+
+# Get specific configuration value
+uv run invoice-checker config get validation_mode
+
+# Show configuration in JSON format
+uv run invoice-checker config list --format json
+```
+
+### Setting Configuration
+
+```bash
+# Set a configuration value
+uv run invoice-checker config set interactive_discovery true
+
+# Set with specific data type
+uv run invoice-checker config set price_tolerance 0.001 --type float
+
+# Set with description and category
+uv run invoice-checker config set validation_mode parts_based \
+  --description "Default validation mode" \
+  --category "validation"
+```
+
+### Resetting Configuration
+
+```bash
+# Reset specific setting to default
+uv run invoice-checker config reset validation_mode
+
+# Reset all settings (with confirmation)
+uv run invoice-checker config reset --force
+```
+
+### Interactive Setup
+
+```bash
+# Run interactive configuration setup
+uv run invoice-checker config setup
+
+# Run setup in interactive mode
+uv run invoice-checker config setup --interactive
+```
+
+### Common Configuration Settings
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `validation_mode` | `parts_based` | Default validation mode |
+| `interactive_discovery` | `true` | Enable interactive part discovery |
+| `price_tolerance` | `0.001` | Price comparison tolerance |
+| `log_retention_days` | `365` | Days to keep discovery logs |
 
 ---
 
@@ -755,23 +861,68 @@ uv run invoice-checker database maintenance --cleanup-logs
 
 ### Common Issues
 
-#### Issue: "Command not found" Error
-**Problem**: Getting "command not found" when trying to run the application.
+#### Issue: Bootstrap Script Won't Run
+**Problem**: Double-clicking the bootstrap script doesn't work or shows permission errors.
 
 **Solutions**:
-1. **Check Python Installation**:
+
+**For macOS Users**:
+1. **Right-click and select "Open"** the first time to bypass security restrictions
+2. **Check file permissions**:
+   ```bash
+   chmod +x "Clarity Invoice Validator.command"
+   ```
+3. **Run from Terminal** if double-clicking fails:
+   ```bash
+   ./Clarity\ Invoice\ Validator.command
+   ```
+
+**For Windows Users**:
+1. **Run as Administrator** if you get permission errors
+2. **Check antivirus software** - some programs block script execution
+3. **Enable script execution** in PowerShell if needed:
+   ```powershell
+   Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+   ```
+
+**For Linux Users**:
+1. **Make the script executable**:
+   ```bash
+   chmod +x "Clarity Invoice Validator.command"
+   ```
+2. **Run from terminal**:
+   ```bash
+   ./Clarity\ Invoice\ Validator.command
+   ```
+
+#### Issue: Download Failures During Bootstrap
+**Problem**: Bootstrap script fails to download required components.
+
+**Solutions**:
+1. **Check Internet Connection**: Ensure you have a stable internet connection
+2. **Check Firewall/Proxy Settings**: Corporate firewalls may block downloads
+3. **Manual Download**: Use the URLs provided by the script to download manually
+4. **Antivirus Interference**: Temporarily disable antivirus during installation
+5. **Use Local Installation**: If you have the full package, place `invoice-launcher.sh` or `invoice-launcher.bat` in the same directory as the bootstrap script
+
+#### Issue: "Command not found" Error
+**Problem**: Getting "command not found" when trying to run the application manually.
+
+**Solutions**:
+1. **Use Bootstrap Scripts First**: Try the bootstrap scripts before manual installation
+2. **Check Python Installation**:
    ```bash
    python3 --version
    # Should show Python 3.8 or higher
    ```
 
-2. **Check UV Installation**:
+3. **Check UV Installation**:
    ```bash
    uv --version
    # Should show UV version
    ```
 
-3. **Ensure you're in the correct directory**:
+4. **Ensure you're in the correct directory**:
    ```bash
    ls -la
    # Should see pyproject.toml and other project files

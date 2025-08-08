@@ -51,6 +51,14 @@ class DatabaseManager:
             self.initialize_database()
         else:
             logger.info(f"Using existing database at {self.db_path}")
+            # Migration: add item_type column if missing
+            with sqlite3.connect(str(self.db_path)) as conn:
+                cursor = conn.execute("PRAGMA table_info(parts)")
+                columns = [row[1] for row in cursor.fetchall()]
+                if "item_type" not in columns:
+                    logger.info("Migrating: Adding 'item_type' column to parts table")
+                    conn.execute("ALTER TABLE parts ADD COLUMN item_type TEXT")
+                    conn.commit()
             # Verify database integrity
             self._verify_database_schema()
 
@@ -121,14 +129,133 @@ class DatabaseManager:
             DatabaseError: If database initialization fails
         """
         try:
-            with self.transaction() as conn:
-                # Read and execute the migration script
-                migration_sql = self._get_migration_sql()
+            with self.get_connection() as conn:
+                # Execute individual SQL statements instead of using executescript
+                # which doesn't work well with in-memory databases
                 
-                # Execute each statement in the migration
-                # Use executescript to handle multi-line statements properly
-                conn.executescript(migration_sql)
+                # Enable foreign key constraints
+                conn.execute("PRAGMA foreign_keys = ON")
                 
+                # Create parts table
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS parts (
+                        composite_key TEXT PRIMARY KEY,
+                        part_number TEXT,
+                        authorized_price DECIMAL(10,4) NOT NULL CHECK (authorized_price > 0),
+                        description TEXT,
+                        item_type TEXT,
+                        category TEXT,
+                        source TEXT DEFAULT 'manual' CHECK (source IN ('manual', 'discovered', 'imported')),
+                        first_seen_invoice TEXT,
+                        created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        is_active BOOLEAN DEFAULT 1 CHECK (is_active IN (0, 1)),
+                        notes TEXT
+                    )
+                """)
+                
+                # Create config table
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS config (
+                        key TEXT PRIMARY KEY,
+                        value TEXT NOT NULL,
+                        data_type TEXT DEFAULT 'string' CHECK (data_type IN ('string', 'number', 'boolean', 'json')),
+                        description TEXT,
+                        category TEXT DEFAULT 'general',
+                        created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                
+                # Create part discovery log table
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS part_discovery_log (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        part_number TEXT NOT NULL,
+                        invoice_number TEXT,
+                        invoice_date TEXT,
+                        discovered_price DECIMAL(10,4) CHECK (discovered_price IS NULL OR discovered_price > 0),
+                        authorized_price DECIMAL(10,4) CHECK (authorized_price IS NULL OR authorized_price > 0),
+                        action_taken TEXT NOT NULL CHECK (action_taken IN ('discovered', 'added', 'updated', 'skipped', 'price_mismatch')),
+                        user_decision TEXT,
+                        discovery_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        processing_session_id TEXT,
+                        notes TEXT
+                    )
+                """)
+                
+                # Create indexes for performance
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_parts_composite ON parts(composite_key)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_parts_number ON parts(part_number)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_parts_active ON parts(is_active) WHERE is_active = 1")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_parts_category ON parts(category)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_parts_item_type ON parts(item_type)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_config_category ON config(category)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_discovery_part ON part_discovery_log(part_number)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_discovery_invoice ON part_discovery_log(invoice_number)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_discovery_date ON part_discovery_log(discovery_date)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_discovery_session ON part_discovery_log(processing_session_id)")
+                
+                # Insert initial configuration data
+                config_data = [
+                    ('validation_mode', 'parts_based', 'string', 'Validation mode: parts_based or threshold_based', 'validation'),
+                    ('default_output_format', 'txt', 'string', 'Default report output format', 'reporting'),
+                    ('interactive_discovery', 'true', 'boolean', 'Enable interactive part discovery during processing', 'discovery'),
+                    ('auto_add_discovered_parts', 'false', 'boolean', 'Automatically add discovered parts without user confirmation', 'discovery'),
+                    ('price_tolerance', '0.001', 'number', 'Price comparison tolerance for floating point precision', 'validation'),
+                    ('backup_retention_days', '30', 'number', 'Number of days to retain database backups', 'maintenance'),
+                    ('log_retention_days', '365', 'number', 'Number of days to retain discovery log entries', 'maintenance'),
+                    ('database_version', '1.0', 'string', 'Current database schema version', 'system')
+                ]
+                
+                for config_item in config_data:
+                    conn.execute("""
+                        INSERT OR IGNORE INTO config (key, value, data_type, description, category)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, config_item)
+                
+                # Create triggers to update last_updated timestamps
+                conn.execute("DROP TRIGGER IF EXISTS update_parts_timestamp")
+                conn.execute("""
+                    CREATE TRIGGER update_parts_timestamp
+                        AFTER UPDATE ON parts
+                        FOR EACH ROW
+                        BEGIN
+                            UPDATE parts SET last_updated = CURRENT_TIMESTAMP WHERE composite_key = NEW.composite_key;
+                        END
+                """)
+                
+                conn.execute("DROP TRIGGER IF EXISTS update_config_timestamp")
+                conn.execute("""
+                    CREATE TRIGGER update_config_timestamp
+                        AFTER UPDATE ON config
+                        FOR EACH ROW
+                        BEGIN
+                            UPDATE config SET last_updated = CURRENT_TIMESTAMP WHERE key = NEW.key;
+                        END
+                """)
+                
+                # Create view for active parts
+                conn.execute("DROP VIEW IF EXISTS active_parts")
+                conn.execute("""
+                    CREATE VIEW active_parts AS
+                    SELECT composite_key, part_number, authorized_price, description, item_type, category, source, first_seen_invoice, created_date, last_updated, notes
+                    FROM parts
+                    WHERE is_active = 1
+                """)
+                
+                # Create view for recent discoveries
+                conn.execute("DROP VIEW IF EXISTS recent_discoveries")
+                conn.execute("""
+                    CREATE VIEW recent_discoveries AS
+                    SELECT pdl.*, p.description, p.authorized_price as current_authorized_price
+                    FROM part_discovery_log pdl
+                    LEFT JOIN parts p ON pdl.part_number = p.part_number
+                    WHERE pdl.discovery_date >= datetime('now', '-30 days')
+                    ORDER BY pdl.discovery_date DESC
+                """)
+                
+                conn.commit()
                 logger.info("Database initialized successfully")
                 
         except Exception as e:
@@ -148,9 +275,11 @@ class DatabaseManager:
 
         -- Create parts table
         CREATE TABLE IF NOT EXISTS parts (
-            part_number TEXT PRIMARY KEY,
+            composite_key TEXT PRIMARY KEY,
+            part_number TEXT,
             authorized_price DECIMAL(10,4) NOT NULL CHECK (authorized_price > 0),
             description TEXT,
+            item_type TEXT,
             category TEXT,
             source TEXT DEFAULT 'manual' CHECK (source IN ('manual', 'discovered', 'imported')),
             first_seen_invoice TEXT,
@@ -187,9 +316,11 @@ class DatabaseManager:
         );
 
         -- Create indexes for performance
+        CREATE INDEX IF NOT EXISTS idx_parts_composite ON parts(composite_key);
         CREATE INDEX IF NOT EXISTS idx_parts_number ON parts(part_number);
         CREATE INDEX IF NOT EXISTS idx_parts_active ON parts(is_active) WHERE is_active = 1;
         CREATE INDEX IF NOT EXISTS idx_parts_category ON parts(category);
+        CREATE INDEX IF NOT EXISTS idx_parts_item_type ON parts(item_type);
         CREATE INDEX IF NOT EXISTS idx_config_category ON config(category);
         CREATE INDEX IF NOT EXISTS idx_discovery_part ON part_discovery_log(part_number);
         CREATE INDEX IF NOT EXISTS idx_discovery_invoice ON part_discovery_log(invoice_number);
@@ -213,7 +344,7 @@ class DatabaseManager:
             AFTER UPDATE ON parts
             FOR EACH ROW
             BEGIN
-                UPDATE parts SET last_updated = CURRENT_TIMESTAMP WHERE part_number = NEW.part_number;
+                UPDATE parts SET last_updated = CURRENT_TIMESTAMP WHERE composite_key = NEW.composite_key;
             END;
 
         DROP TRIGGER IF EXISTS update_config_timestamp;
@@ -227,7 +358,7 @@ class DatabaseManager:
         -- Create view for active parts (commonly used query)
         DROP VIEW IF EXISTS active_parts;
         CREATE VIEW active_parts AS
-        SELECT part_number, authorized_price, description, category, source, first_seen_invoice, created_date, last_updated, notes
+        SELECT composite_key, part_number, authorized_price, description, item_type, category, source, first_seen_invoice, created_date, last_updated, notes
         FROM parts
         WHERE is_active = 1;
 
@@ -310,24 +441,24 @@ class DatabaseManager:
                     
                     conn.execute("""
                         INSERT INTO parts (
-                            part_number, authorized_price, description, category, source,
+                            composite_key, part_number, authorized_price, description, item_type, category, source,
                             first_seen_invoice, created_date, last_updated, is_active, notes
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
-                        part.part_number, float(part.authorized_price), part.description,
-                        part.category, part.source, part.first_seen_invoice,
+                        part.composite_key, part.part_number, float(part.authorized_price), part.description,
+                        part.item_type, part.category, part.source, part.first_seen_invoice,
                         part.created_date.isoformat(), part.last_updated.isoformat(),
                         part.is_active, part.notes
                     ))
                     
                     conn.commit()
-                    logger.info(f"Created part: {part.part_number}")
+                    logger.info(f"Created part: {part.composite_key} (part_number: {part.part_number})")
                     return part
                     
                 except sqlite3.IntegrityError as e:
                     conn.rollback()
                     if "UNIQUE constraint failed" in str(e):
-                        raise DatabaseError(f"Part {part.part_number} already exists")
+                        raise DatabaseError(f"Part with composite key {part.composite_key} already exists")
                     raise DatabaseError(f"Failed to create part: {e}")
                 except Exception as e:
                     conn.rollback()
@@ -336,15 +467,61 @@ class DatabaseManager:
         except ValidationError:
             raise
         except Exception as e:
-            logger.error(f"Failed to create part {part.part_number}: {e}")
+            logger.error(f"Failed to create part {part.composite_key}: {e}")
             raise DatabaseError(f"Failed to create part: {e}")
 
-    def get_part(self, part_number: str) -> Part:
+    def get_part(self, part_identifier: str) -> Part:
         """
-        Retrieve a part by part number.
+        Retrieve a part by part number (legacy) or composite key.
         
         Args:
-            part_number: Part number to retrieve
+            part_identifier: Part number or composite key to retrieve
+            
+        Returns:
+            Part: Retrieved part
+            
+        Raises:
+            PartNotFoundError: If part is not found
+            DatabaseError: If database operation fails
+        """
+        try:
+            with self.get_connection() as conn:
+                # First try to find by composite key
+                cursor = conn.execute("""
+                    SELECT composite_key, part_number, authorized_price, description, item_type, category, source,
+                           first_seen_invoice, created_date, last_updated, is_active, notes
+                    FROM parts WHERE composite_key = ?
+                """, (part_identifier,))
+                
+                row = cursor.fetchone()
+                if row:
+                    return self._row_to_part(row)
+                
+                # If not found by composite key, try by part_number for backward compatibility
+                cursor = conn.execute("""
+                    SELECT composite_key, part_number, authorized_price, description, item_type, category, source,
+                           first_seen_invoice, created_date, last_updated, is_active, notes
+                    FROM parts WHERE part_number = ?
+                """, (part_identifier,))
+                
+                row = cursor.fetchone()
+                if not row:
+                    raise PartNotFoundError(f"Part {part_identifier} not found")
+                
+                return self._row_to_part(row)
+                
+        except PartNotFoundError:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to retrieve part {part_identifier}: {e}")
+            raise DatabaseError(f"Failed to retrieve part: {e}")
+
+    def get_part_by_composite_key(self, composite_key: str) -> Part:
+        """
+        Retrieve a part by composite key.
+        
+        Args:
+            composite_key: Composite key to retrieve
             
         Returns:
             Part: Retrieved part
@@ -356,29 +533,58 @@ class DatabaseManager:
         try:
             with self.get_connection() as conn:
                 cursor = conn.execute("""
-                    SELECT part_number, authorized_price, description, category, source,
+                    SELECT composite_key, part_number, authorized_price, description, item_type, category, source,
                            first_seen_invoice, created_date, last_updated, is_active, notes
-                    FROM parts WHERE part_number = ?
-                """, (part_number,))
+                    FROM parts WHERE composite_key = ?
+                """, (composite_key,))
                 
                 row = cursor.fetchone()
                 if not row:
-                    raise PartNotFoundError(f"Part {part_number} not found")
+                    raise PartNotFoundError(f"Part with composite key {composite_key} not found")
                 
                 return self._row_to_part(row)
                 
         except PartNotFoundError:
             raise
         except Exception as e:
-            logger.error(f"Failed to retrieve part {part_number}: {e}")
+            logger.error(f"Failed to retrieve part by composite key {composite_key}: {e}")
             raise DatabaseError(f"Failed to retrieve part: {e}")
 
-    def update_part(self, part_number_or_part: Union[str, Part], **kwargs) -> Part:
+    def find_part_by_components(self, item_type: Optional[str], description: Optional[str],
+                               part_number: Optional[str]) -> Optional[Part]:
+        """
+        Find a part by its components (item_type, description, part_number).
+        
+        Args:
+            item_type: Item type component
+            description: Description component
+            part_number: Part number component
+            
+        Returns:
+            Part if found, None otherwise
+            
+        Raises:
+            DatabaseError: If database operation fails
+        """
+        try:
+            # Generate composite key from components
+            composite_key = Part.generate_identifier_from_components(item_type, description, part_number)
+            
+            try:
+                return self.get_part_by_composite_key(composite_key)
+            except PartNotFoundError:
+                return None
+                
+        except Exception as e:
+            logger.error(f"Failed to find part by components: {e}")
+            raise DatabaseError(f"Failed to find part by components: {e}")
+
+    def update_part(self, part_identifier_or_part: Union[str, Part], **kwargs) -> Part:
         """
         Update an existing part in the database.
         
         Args:
-            part_number_or_part: Either a Part instance or part number string
+            part_identifier_or_part: Either a Part instance or part identifier (composite key or part number)
             **kwargs: Fields to update (authorized_price, description, category, etc.)
             
         Returns:
@@ -390,9 +596,9 @@ class DatabaseManager:
             DatabaseError: If database operation fails
         """
         try:
-            if isinstance(part_number_or_part, Part):
+            if isinstance(part_identifier_or_part, Part):
                 # Original behavior - update with Part instance
-                part = part_number_or_part
+                part = part_identifier_or_part
                 part.validate()
                 
                 with self.transaction() as conn:
@@ -400,32 +606,34 @@ class DatabaseManager:
                     
                     cursor = conn.execute("""
                         UPDATE parts SET
-                            authorized_price = ?, description = ?, category = ?, source = ?,
+                            part_number = ?, authorized_price = ?, description = ?, item_type = ?, category = ?, source = ?,
                             first_seen_invoice = ?, last_updated = ?, is_active = ?, notes = ?
-                        WHERE part_number = ?
+                        WHERE composite_key = ?
                     """, (
-                        float(part.authorized_price), part.description, part.category,
+                        part.part_number, float(part.authorized_price), part.description, part.item_type, part.category,
                         part.source, part.first_seen_invoice, part.last_updated.isoformat(),
-                        part.is_active, part.notes, part.part_number
+                        part.is_active, part.notes, part.composite_key
                     ))
                     
                     if cursor.rowcount == 0:
-                        raise PartNotFoundError(f"Part {part.part_number} not found")
+                        raise PartNotFoundError(f"Part {part.composite_key} not found")
                     
-                    logger.info(f"Updated part: {part.part_number}")
+                    logger.info(f"Updated part: {part.composite_key}")
                     return part
             else:
-                # New behavior - update by part number with kwargs
-                part_number = part_number_or_part
+                # New behavior - update by identifier with kwargs
+                part_identifier = part_identifier_or_part
                 
                 # Get existing part
-                existing_part = self.get_part(part_number)
+                existing_part = self.get_part(part_identifier)
                 
                 # Update fields from kwargs
                 if 'authorized_price' in kwargs:
                     existing_part.authorized_price = Decimal(str(kwargs['authorized_price']))
                 if 'description' in kwargs:
                     existing_part.description = kwargs['description']
+                if 'item_type' in kwargs:
+                    existing_part.item_type = kwargs['item_type']
                 if 'category' in kwargs:
                     existing_part.category = kwargs['category']
                 if 'source' in kwargs:
@@ -437,6 +645,10 @@ class DatabaseManager:
                 if 'notes' in kwargs:
                     existing_part.notes = kwargs['notes']
                 
+                # Regenerate composite key if components changed
+                if any(k in kwargs for k in ['item_type', 'description', 'part_number']):
+                    existing_part.composite_key = existing_part.generate_composite_key()
+                
                 # Validate and save
                 existing_part.validate()
                 
@@ -445,19 +657,20 @@ class DatabaseManager:
                     
                     cursor = conn.execute("""
                         UPDATE parts SET
-                            authorized_price = ?, description = ?, category = ?, source = ?,
+                            composite_key = ?, part_number = ?, authorized_price = ?, description = ?, item_type = ?, category = ?, source = ?,
                             first_seen_invoice = ?, last_updated = ?, is_active = ?, notes = ?
-                        WHERE part_number = ?
+                        WHERE composite_key = ?
                     """, (
-                        float(existing_part.authorized_price), existing_part.description, existing_part.category,
+                        existing_part.composite_key, existing_part.part_number, float(existing_part.authorized_price),
+                        existing_part.description, existing_part.item_type, existing_part.category,
                         existing_part.source, existing_part.first_seen_invoice, existing_part.last_updated.isoformat(),
-                        existing_part.is_active, existing_part.notes, existing_part.part_number
+                        existing_part.is_active, existing_part.notes, part_identifier
                     ))
                     
                     if cursor.rowcount == 0:
-                        raise PartNotFoundError(f"Part {part_number} not found")
+                        raise PartNotFoundError(f"Part {part_identifier} not found")
                     
-                    logger.info(f"Updated part: {part_number}")
+                    logger.info(f"Updated part: {existing_part.composite_key}")
                     return existing_part
                 
         except PartNotFoundError:
@@ -466,12 +679,12 @@ class DatabaseManager:
             logger.error(f"Failed to update part: {e}")
             raise DatabaseError(f"Failed to update part: {e}")
 
-    def delete_part(self, part_number: str, soft_delete: bool = True) -> None:
+    def delete_part(self, part_identifier: str, soft_delete: bool = True) -> None:
         """
         Delete a part from the database.
         
         Args:
-            part_number: Part number to delete
+            part_identifier: Part identifier (composite key or part number) to delete
             soft_delete: If True, mark as inactive; if False, permanently delete
             
         Raises:
@@ -482,28 +695,31 @@ class DatabaseManager:
             with self.transaction() as conn:
                 if soft_delete:
                     # Soft delete - mark as inactive
+                    # Try by composite key first, then by part number
                     cursor = conn.execute("""
                         UPDATE parts SET is_active = 0, last_updated = CURRENT_TIMESTAMP
-                        WHERE part_number = ?
-                    """, (part_number,))
+                        WHERE composite_key = ? OR part_number = ?
+                    """, (part_identifier, part_identifier))
                     
                     if cursor.rowcount == 0:
-                        raise PartNotFoundError(f"Part {part_number} not found")
+                        raise PartNotFoundError(f"Part {part_identifier} not found")
                     
-                    logger.info(f"Soft deleted part: {part_number}")
+                    logger.info(f"Soft deleted part: {part_identifier}")
                 else:
                     # Hard delete - permanently remove
-                    cursor = conn.execute("DELETE FROM parts WHERE part_number = ?", (part_number,))
+                    cursor = conn.execute("""
+                        DELETE FROM parts WHERE composite_key = ? OR part_number = ?
+                    """, (part_identifier, part_identifier))
                     
                     if cursor.rowcount == 0:
-                        raise PartNotFoundError(f"Part {part_number} not found")
+                        raise PartNotFoundError(f"Part {part_identifier} not found")
                     
-                    logger.info(f"Hard deleted part: {part_number}")
+                    logger.info(f"Hard deleted part: {part_identifier}")
                     
         except PartNotFoundError:
             raise
         except Exception as e:
-            logger.error(f"Failed to delete part {part_number}: {e}")
+            logger.error(f"Failed to delete part {part_identifier}: {e}")
             raise DatabaseError(f"Failed to delete part: {e}")
 
     def list_parts(self, active_only: bool = False, category: Optional[str] = None,
@@ -526,7 +742,7 @@ class DatabaseManager:
         try:
             with self.get_connection() as conn:
                 query = """
-                    SELECT part_number, authorized_price, description, category, source,
+                    SELECT composite_key, part_number, authorized_price, description, item_type, category, source,
                            first_seen_invoice, created_date, last_updated, is_active, notes
                     FROM parts
                     WHERE 1=1
@@ -540,7 +756,7 @@ class DatabaseManager:
                     query += " AND category = ?"
                     params.append(category)
                 
-                query += " ORDER BY part_number"
+                query += " ORDER BY composite_key"
                 
                 if limit:
                     query += " LIMIT ?"
@@ -577,10 +793,12 @@ class DatabaseManager:
         if row['last_updated']:
             last_updated = datetime.fromisoformat(row['last_updated'])
         
-        return Part(
+        # Create the Part instance without composite_key parameter
+        part = Part(
             part_number=row['part_number'],
             authorized_price=Decimal(str(row['authorized_price'])),
             description=row['description'],
+            item_type=row['item_type'] if 'item_type' in row.keys() else None,
             category=row['category'],
             source=row['source'],
             first_seen_invoice=row['first_seen_invoice'],
@@ -589,6 +807,12 @@ class DatabaseManager:
             is_active=bool(row['is_active']),
             notes=row['notes']
         )
+        
+        # Set the composite_key directly if it exists in the row
+        if 'composite_key' in row.keys() and row['composite_key']:
+            part.composite_key = row['composite_key']
+        
+        return part
 
     # Database utility methods
     
@@ -1424,7 +1648,7 @@ class DatabaseManager:
             
             with open(csv_path, 'w', newline='', encoding='utf-8') as csvfile:
                 fieldnames = [
-                    'part_number', 'authorized_price', 'description', 'category',
+                    'part_number', 'authorized_price', 'description', 'item_type', 'category',
                     'source', 'first_seen_invoice', 'created_date', 'last_updated',
                     'is_active', 'notes'
                 ]
@@ -1437,6 +1661,7 @@ class DatabaseManager:
                         'part_number': part.part_number,
                         'authorized_price': f"{part.authorized_price:.2f}",
                         'description': part.description or '',
+                        'item_type': part.item_type or '',
                         'category': part.category or '',
                         'source': part.source or '',
                         'first_seen_invoice': part.first_seen_invoice or '',
@@ -1616,6 +1841,35 @@ class DatabaseManager:
             List[PartDiscoveryLog]: List of discovery log entries
         """
         return self.get_discovery_logs(limit=limit)
+
+    def reset_database(self) -> None:
+        """
+        Reset (erase) the database by deleting the file and reinitializing.
+        
+        This method completely removes the existing database file and creates
+        a new one with the default schema and configuration.
+        
+        Raises:
+            DatabaseError: If reset operation fails
+        """
+        try:
+            # Close any existing connections by creating a new connection briefly
+            # This ensures the database file is not locked
+            with self.get_connection() as conn:
+                pass
+            
+            # Remove the database file
+            if self.db_path.exists():
+                self.db_path.unlink()
+                logger.info(f"Deleted existing database file: {self.db_path}")
+            
+            # Reinitialize the database
+            self.initialize_database()
+            logger.info("Database reset completed successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to reset database: {e}")
+            raise DatabaseError(f"Failed to reset database: {e}")
 
     def close(self) -> None:
         """

@@ -17,11 +17,14 @@ test_validation/
 ├── __init__.py                           # Package initialization
 ├── README.md                            # This documentation
 ├── run_validation_tests.py              # Main test runner
+├── extract_invoice_text.py              # Text extraction utility script
+├── extract_validation_output.py         # Validation output extraction utility
 ├── test_text_extraction_validation.py   # Text extraction tests
 ├── test_cli_validation_output.py        # CLI validation tests
 ├── test_expectation_generator.py        # Expectation management tests
-└── expectations/                        # Expected results templates
-    └── 5790265785_expectations.json     # Sample expectation template
+└── expectations/                        # Expected results and extracted text files
+    ├── 5790265785_expectations.json     # Sample expectation template
+    └── 5790265775_actual_output.txt     # Sample validation output
 ```
 
 ## Running Tests
@@ -77,8 +80,9 @@ PYTHONPATH=. python -m pytest tests_e2e/ test_validation/ -v
 
 **Key test files**:
 - `test_text_extraction_validation.py`
-- Uses `docs/invoices/5790265785.pdf` and `docs/invoices/output/5790265785_extracted_text.txt`
-- run `extract_invoice_text.py` to generate text if does not exist 
+- Uses `docs/invoices/5790265785.pdf` as input
+- Extracted text files are saved to `test_validation/expectations/`
+- Run `extract_invoice_text.py --invoicePath <path>` to generate extracted text files
 
 **Example test**:
 ```python
@@ -195,6 +199,37 @@ generator.save_expectation_template("invoice_name", template)
 - **Version control** - Track template changes alongside code changes
 - **Document changes** - Record why template values were modified
 
+## Utility Scripts
+
+### Text Extraction Utility
+
+**`extract_invoice_text.py`** - Extracts text from PDF invoices using the same method as PDFProcessor
+
+**Usage**:
+```bash
+# Extract text from a specific invoice
+python test_validation/extract_invoice_text.py --invoicePath docs/invoices/5790265785.pdf
+
+# This will create: test_validation/expectations/5790265785_extracted_text.txt
+```
+
+**Features**:
+- Uses identical text extraction method as the main PDFProcessor
+- Validates input file exists and is a PDF
+- Saves extracted text to `test_validation/expectations/` directory
+- Includes metadata header with extraction details
+- Returns proper exit codes (0 for success, 1 for failure)
+
+### Validation Output Extraction
+
+**`extract_validation_output.py`** - Extracts validation output for comparison testing
+
+**Usage**:
+```bash
+# Extract validation output for testing
+python test_validation/extract_validation_output.py
+```
+
 ## Test Data Requirements
 
 ### Required Files
@@ -202,8 +237,10 @@ generator.save_expectation_template("invoice_name", template)
 The validation tests require these files to be present:
 
 1. **Test Invoice PDF**: `docs/invoices/5790265785.pdf`
-2. **Expected Text Output**: `docs/invoices/output/5790265785_extracted_text.txt`
+2. **Expected Text Output**: `test_validation/expectations/5790265785_extracted_text.txt`
 3. **Expectation Template**: `test_validation/expectations/5790265785_expectations.json`
+
+**Note**: If extracted text files don't exist, use the `extract_invoice_text.py` utility to generate them.
 
 ### Test Database
 

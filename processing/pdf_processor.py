@@ -143,6 +143,9 @@ class PDFProcessor:
         """
         Process a PDF invoice and extract structured data.
         
+        Uses EXCLUSIVE table extraction for line items - no fallback to text extraction.
+        If table extraction fails, the method will raise an exception.
+        
         Args:
             pdf_path: Path to the PDF file to process
             
@@ -151,6 +154,7 @@ class PDFProcessor:
             
         Raises:
             PDFProcessingError: For various processing errors
+            LineItemParsingError: If table extraction fails or finds no valid line items
         """
         self.logger.info(f"Starting PDF processing for: {pdf_path}")
         
@@ -164,15 +168,32 @@ class PDFProcessor:
             # Step 1: Validate PDF readability
             self._validate_pdf_readability(pdf_path)
             
-            # Step 2: Extract text from PDF
+            # Step 2: Extract text from PDF (needed for metadata and format sections)
             raw_text = self._extract_text_from_pdf(pdf_path)
             invoice_data.raw_text = raw_text
             
             # Step 3: Parse invoice metadata
             self._parse_invoice_metadata(raw_text, invoice_data)
             
-            # Step 4: Extract line items
-            self._extract_line_items(raw_text, invoice_data)
+            # Step 4: Extract line items using table extraction (EXCLUSIVE - no fallback)
+            self.logger.info("Attempting table-based line item extraction")
+            tables = self._extract_tables(pdf_path)
+            if not tables:
+                raise LineItemParsingError(
+                    "No tables found in PDF - table extraction is required",
+                    pdf_path=str(pdf_path)
+                )
+            
+            table_line_items = self._extract_line_items_from_tables(tables)
+            if not table_line_items:
+                raise LineItemParsingError(
+                    "Table extraction found tables but no valid line items could be extracted",
+                    pdf_path=str(pdf_path)
+                )
+            
+            invoice_data.line_items = table_line_items
+            invoice_data.add_processing_note(f"Line items extracted from {len(tables)} tables")
+            self.logger.info(f"Successfully extracted {len(table_line_items)} line items from tables")
             
             # Step 5: Extract format sections
             self._extract_format_sections(raw_text, invoice_data)
@@ -307,6 +328,656 @@ class PDFProcessor:
                 f"Error during text extraction: {str(e)}",
                 pdf_path=str(pdf_path)
             ) from e
+    
+    def _extract_tables(self, pdf_path: Path) -> List[List[List[str]]]:
+        """
+        Extract tables from all pages of the PDF using camelot-py.
+        
+        Args:
+            pdf_path: Path to the PDF file
+            
+        Returns:
+            List of tables, where each table is a list of rows,
+            and each row is a list of cell values
+            
+        Raises:
+            TextExtractionError: If table extraction fails
+        """
+        try:
+            import camelot
+            import pandas as pd
+            
+            all_tables = []
+            
+            # Extract tables using camelot - try both methods and pick the best result
+            lattice_tables = []
+            stream_tables = []
+            
+            # Try lattice method first
+            try:
+                lattice_tables = camelot.read_pdf(str(pdf_path), flavor='lattice', pages='all')
+                self.logger.debug(f"Lattice method found {len(lattice_tables)} tables")
+            except Exception as e:
+                self.logger.warning(f"Camelot lattice method failed: {e}")
+            
+            # Try stream method
+            try:
+                stream_tables = camelot.read_pdf(str(pdf_path), flavor='stream', pages='all')
+                self.logger.debug(f"Stream method found {len(stream_tables)} tables")
+            except Exception as e:
+                self.logger.warning(f"Camelot stream method failed: {e}")
+            
+            # Choose the better result based on table structure quality
+            camelot_tables = self._choose_best_tables(lattice_tables, stream_tables)
+            
+            if not camelot_tables:
+                self.logger.error("Both camelot methods failed or returned no tables")
+                return []
+            
+            # Convert camelot tables to our format
+            for table_idx, camelot_table in enumerate(camelot_tables):
+                try:
+                    # Get the DataFrame and convert to list of lists
+                    df = camelot_table.df
+                    
+                    # Convert DataFrame to list of lists
+                    table_data = []
+                    for _, row in df.iterrows():
+                        # Clean up cells - strip whitespace and handle NaN values
+                        cleaned_row = [
+                            str(cell).strip() if pd.notna(cell) and str(cell).strip() else ""
+                            for cell in row
+                        ]
+                        # Only add rows that have at least one non-empty cell
+                        if any(cell for cell in cleaned_row):
+                            table_data.append(cleaned_row)
+                    
+                    if table_data:  # Only add non-empty tables
+                        all_tables.append(table_data)
+                        self.logger.debug(
+                            f"Processed table {table_idx + 1}: "
+                            f"{len(table_data)} rows, {len(table_data[0]) if table_data else 0} columns"
+                        )
+                        
+                except Exception as e:
+                    self.logger.warning(f"Error processing table {table_idx + 1}: {e}")
+                    continue
+            
+            if not all_tables:
+                self.logger.warning("No tables found in PDF")
+            else:
+                self.logger.info(f"Extracted {len(all_tables)} tables using camelot-py")
+            
+            return all_tables
+            
+        except ImportError:
+            self.logger.error("camelot-py not installed. Please install with: pip install camelot-py[cv]")
+            return []
+        except Exception as e:
+            if isinstance(e, TextExtractionError):
+                raise
+            raise TextExtractionError(
+                f"Error during table extraction with camelot: {str(e)}",
+                pdf_path=str(pdf_path)
+            ) from e
+    
+    def _choose_best_tables(self, lattice_tables, stream_tables):
+        """
+        Choose the better table extraction result between lattice and stream methods.
+        
+        Args:
+            lattice_tables: Tables extracted using lattice method
+            stream_tables: Tables extracted using stream method
+            
+        Returns:
+            The better set of filtered and deduplicated tables
+        """
+        # If one method failed, use the other
+        if not lattice_tables and stream_tables:
+            self.logger.info("Using stream method results (lattice failed)")
+            filtered_tables = self._filter_and_deduplicate_tables(stream_tables)
+            self.logger.info(f"Filtered stream tables: {len(stream_tables)} -> {len(filtered_tables)}")
+            return filtered_tables
+        elif lattice_tables and not stream_tables:
+            self.logger.info("Using lattice method results (stream failed)")
+            filtered_tables = self._filter_and_deduplicate_tables(lattice_tables)
+            self.logger.info(f"Filtered lattice tables: {len(lattice_tables)} -> {len(filtered_tables)}")
+            return filtered_tables
+        elif not lattice_tables and not stream_tables:
+            return []
+        
+        # Both methods returned results, filter and compare quality
+        filtered_lattice = self._filter_and_deduplicate_tables(lattice_tables)
+        filtered_stream = self._filter_and_deduplicate_tables(stream_tables)
+        
+        lattice_score = sum(self._score_individual_table(table.df) for table in filtered_lattice)
+        stream_score = sum(self._score_individual_table(table.df) for table in filtered_stream)
+        
+        if stream_score > lattice_score:
+            self.logger.info(f"Using stream method results (score: {stream_score} vs lattice: {lattice_score})")
+            self.logger.info(f"Filtered stream tables: {len(stream_tables)} -> {len(filtered_stream)}")
+            return filtered_stream
+        else:
+            self.logger.info(f"Using lattice method results (score: {lattice_score} vs stream: {stream_score})")
+            self.logger.info(f"Filtered lattice tables: {len(lattice_tables)} -> {len(filtered_lattice)}")
+            return filtered_lattice
+    
+    def _filter_and_deduplicate_tables(self, tables):
+        """
+        Filter out garbage tables and deduplicate similar tables.
+        
+        Args:
+            tables: List of camelot table objects
+            
+        Returns:
+            List of filtered and deduplicated table objects
+        """
+        if not tables:
+            return []
+        
+        # Score and filter tables
+        scored_tables = []
+        rejected_count = 0
+        
+        for table in tables:
+            try:
+                df = table.df
+                score = self._score_individual_table(df)
+                if score > 0:  # Only include tables with positive scores
+                    scored_tables.append((table, score))
+                else:
+                    rejected_count += 1
+                    self.logger.debug(f"Rejected table with score {score}")
+            except Exception as e:
+                rejected_count += 1
+                self.logger.debug(f"Rejected table due to error: {e}")
+        
+        if rejected_count > 0:
+            self.logger.info(f"Rejected {rejected_count} garbage/low-quality tables")
+        
+        # Deduplicate similar tables (keep the highest scoring version)
+        deduplicated_tables = self._deduplicate_tables(scored_tables)
+        
+        if len(scored_tables) != len(deduplicated_tables):
+            duplicate_count = len(scored_tables) - len(deduplicated_tables)
+            self.logger.info(f"Removed {duplicate_count} duplicate tables")
+        
+        # Return just the table objects (without scores)
+        return [table for table, _ in deduplicated_tables]
+    
+    def _score_table_quality(self, tables):
+        """
+        Score the quality of extracted tables based on structure and content.
+        
+        Args:
+            tables: List of camelot table objects
+            
+        Returns:
+            Quality score (higher is better)
+        """
+        if not tables:
+            return 0
+        
+        # Filter and score tables, then deduplicate
+        scored_tables = []
+        for table in tables:
+            try:
+                df = table.df
+                score = self._score_individual_table(df)
+                if score > 0:  # Only include tables with positive scores
+                    scored_tables.append((table, score))
+            except Exception:
+                continue
+        
+        # Deduplicate similar tables (keep the highest scoring version)
+        deduplicated_tables = self._deduplicate_tables(scored_tables)
+        
+        # Return total score of deduplicated tables
+        return sum(score for _, score in deduplicated_tables)
+    
+    def _score_individual_table(self, df):
+        """
+        Score an individual table based on structure and content quality.
+        
+        Args:
+            df: pandas DataFrame of the table
+            
+        Returns:
+            Quality score (0 or negative means reject table)
+        """
+        rows, cols = df.shape
+        
+        # Basic structure scoring
+        col_score = min(cols * 10, 100)  # Cap at 100 points for columns
+        row_score = min(rows * 2, 50)   # Cap at 50 points for rows
+        
+        # Heavy penalty for tables that are too narrow (likely poorly extracted)
+        if cols < 3:
+            col_score *= 0.1
+        
+        # Content-based validation
+        content_score = self._score_table_content(df)
+        
+        # Noise detection - reject tables with too much header/footer noise
+        noise_penalty = self._calculate_noise_penalty(df)
+        
+        # Structure bonus for reasonable dimensions
+        if 5 <= cols <= 15 and 3 <= rows <= 100:
+            structure_bonus = 20
+        else:
+            structure_bonus = 0
+        
+        total_score = col_score + row_score + content_score + structure_bonus - noise_penalty
+        
+        # Reject garbage tables (invoice headers, pure text blocks, etc.)
+        if self._is_garbage_table(df):
+            return -1000  # Strong negative score to reject
+        
+        return max(0, total_score)  # Don't return negative scores
+    
+    def _score_table_content(self, df):
+        """
+        Score table based on content patterns that indicate line item data.
+        
+        Args:
+            df: pandas DataFrame
+            
+        Returns:
+            Content quality score
+        """
+        score = 0
+        
+        # Look for line item indicators
+        text_content = ' '.join(df.astype(str).values.flatten()).upper()
+        
+        # Positive indicators (line item table characteristics)
+        line_item_indicators = [
+            'WEARER', 'ITEM', 'DESCRIPTION', 'SIZE', 'TYPE', 'QTY', 'RATE', 'TOTAL',
+            'RENT', 'BILL', 'QUANTITY', 'AMOUNT', 'PRICE'
+        ]
+        
+        for indicator in line_item_indicators:
+            if indicator in text_content:
+                score += 15
+        
+        # Look for part number patterns (alphanumeric codes)
+        import re
+        part_pattern = r'\b[A-Z]{2,3}\d{3,4}[A-Z]*\b'  # Pattern like GS0448NAVY, GP0171NAVY
+        part_matches = len(re.findall(part_pattern, text_content))
+        score += min(part_matches * 5, 50)  # Up to 50 points for part numbers
+        
+        # Look for numeric data (rates, quantities, totals)
+        numeric_pattern = r'\b\d+\.\d{2,3}\b'  # Decimal numbers like rates
+        numeric_matches = len(re.findall(numeric_pattern, text_content))
+        score += min(numeric_matches * 2, 30)  # Up to 30 points for numeric data
+        
+        return score
+    
+    def _calculate_noise_penalty(self, df):
+        """
+        Calculate penalty for noisy tables with too much header/footer content.
+        
+        Args:
+            df: pandas DataFrame
+            
+        Returns:
+            Noise penalty score
+        """
+        penalty = 0
+        text_content = ' '.join(df.astype(str).values.flatten()).upper()
+        
+        # Noise indicators (invoice header/footer content)
+        noise_indicators = [
+            'BILLING INQUIRIES', 'CUSTOMER SERVICE', 'INVOICE NUMBER', 'INVOICE DATE',
+            'ACCOUNT NUMBER', 'CUSTOMER NUMBER', 'PAY YOUR BILL', 'HTTP://', 'WWW.',
+            'TERMS', 'NET 30', 'PO #', 'NAID', 'MARKET CENTER', 'ROUTE NUMBER',
+            'PAGE', 'OF', 'SHIP TO:', 'SUITE', 'DRIVE', 'STREET', 'AVE', 'BLVD'
+        ]
+        
+        for indicator in noise_indicators:
+            if indicator in text_content:
+                penalty += 25  # Heavy penalty for noise
+        
+        # Penalty for tables with too many empty cells
+        empty_cells = df.isnull().sum().sum() + (df == '').sum().sum()
+        total_cells = df.size
+        if total_cells > 0:
+            empty_ratio = empty_cells / total_cells
+            if empty_ratio > 0.5:  # More than 50% empty
+                penalty += 50
+        
+        return penalty
+    
+    def _is_garbage_table(self, df):
+        """
+        Determine if a table is garbage (invoice header, pure text, etc.).
+        
+        Args:
+            df: pandas DataFrame
+            
+        Returns:
+            True if table should be rejected as garbage
+        """
+        rows, cols = df.shape
+        
+        # Reject very small tables
+        if rows < 3 or cols < 3:
+            return True
+        
+        # Reject tables that are mostly empty
+        non_empty_cells = (~df.isnull() & (df != '')).sum().sum()
+        if non_empty_cells < (rows * cols * 0.3):  # Less than 30% filled
+            return True
+        
+        text_content = ' '.join(df.astype(str).values.flatten()).upper()
+        
+        # Strong garbage indicators
+        garbage_indicators = [
+            'BILLING INQUIRIES',
+            'CUSTOMER SERVICE',
+            'PAY YOUR BILL',
+            'HTTP://MYACCOUNT',
+            'INVOICE\nCUSTOMER SERVICE'
+        ]
+        
+        for indicator in garbage_indicators:
+            if indicator in text_content:
+                return True
+        
+        # Check if table has no line item characteristics
+        line_item_words = ['WEARER', 'ITEM', 'RATE', 'QTY', 'TOTAL', 'RENT']
+        has_line_items = any(word in text_content for word in line_item_words)
+        
+        # If it's a large table with no line item indicators, it's likely garbage
+        if rows > 10 and not has_line_items:
+            return True
+        
+        return False
+    
+    def _deduplicate_tables(self, scored_tables):
+        """
+        Remove duplicate or very similar tables, keeping the highest scoring version.
+        
+        Args:
+            scored_tables: List of (table, score) tuples
+            
+        Returns:
+            List of deduplicated (table, score) tuples
+        """
+        if len(scored_tables) <= 1:
+            return scored_tables
+        
+        # Sort by score (highest first)
+        scored_tables.sort(key=lambda x: x[1], reverse=True)
+        
+        deduplicated = []
+        for table, score in scored_tables:
+            df = table.df
+            
+            # Check if this table is similar to any already accepted table
+            is_duplicate = False
+            for existing_table, _ in deduplicated:
+                if self._tables_are_similar(df, existing_table.df):
+                    is_duplicate = True
+                    break
+            
+            if not is_duplicate:
+                deduplicated.append((table, score))
+        
+        return deduplicated
+    
+    def _tables_are_similar(self, df1, df2, similarity_threshold=0.7):
+        """
+        Check if two tables are similar (likely duplicates with different noise levels).
+        
+        Args:
+            df1, df2: pandas DataFrames to compare
+            similarity_threshold: Minimum similarity ratio to consider tables similar
+            
+        Returns:
+            True if tables are similar enough to be considered duplicates
+        """
+        # Quick dimension check
+        if abs(df1.shape[0] - df2.shape[0]) > 10:  # Very different row counts
+            return False
+        
+        # Compare content similarity
+        text1 = ' '.join(df1.astype(str).values.flatten()).upper()
+        text2 = ' '.join(df2.astype(str).values.flatten()).upper()
+        
+        # Simple similarity check based on common words
+        words1 = set(text1.split())
+        words2 = set(text2.split())
+        
+        if not words1 or not words2:
+            return False
+        
+        intersection = len(words1.intersection(words2))
+        union = len(words1.union(words2))
+        
+        similarity = intersection / union if union > 0 else 0
+        
+        return similarity >= similarity_threshold
+    
+    def _extract_line_items_from_tables(self, tables: List[List[List[str]]]) -> List[LineItem]:
+        """
+        Extract line items from table data.
+        
+        Args:
+            tables: List of tables extracted from PDF
+            
+        Returns:
+            List of LineItem objects extracted from tables
+        """
+        line_items = []
+        
+        for table_idx, table in enumerate(tables):
+            if not table:
+                continue
+                
+            self.logger.debug(f"Processing table {table_idx + 1} with {len(table)} rows")
+            
+            # Find the header row to identify column positions
+            header_row_idx = self._find_header_row(table)
+            if header_row_idx is None:
+                self.logger.debug(f"No header row found in table {table_idx + 1}, skipping")
+                continue
+            
+            header_row = table[header_row_idx]
+            column_mapping = self._map_table_columns(header_row)
+            
+            if not column_mapping:
+                self.logger.debug(f"No recognizable columns found in table {table_idx + 1}, skipping")
+                continue
+            
+            self.logger.debug(f"Table {table_idx + 1} column mapping: {column_mapping}")
+            
+            # Process data rows (skip header and any rows before it)
+            for row_idx in range(header_row_idx + 1, len(table)):
+                row = table[row_idx]
+                
+                # Skip empty rows or rows that don't have enough columns
+                if not row or len(row) < max(column_mapping.values()) + 1:
+                    continue
+                
+                line_item = self._parse_table_row_to_line_item(row, column_mapping, row_idx + 1)
+                if line_item:
+                    line_items.append(line_item)
+        
+        self.logger.info(f"Extracted {len(line_items)} line items from {len(tables)} tables")
+        return line_items
+    
+    def _find_header_row(self, table: List[List[str]]) -> Optional[int]:
+        """
+        Find the header row in a table by looking for column header keywords.
+        
+        Args:
+            table: Table data as list of rows
+            
+        Returns:
+            Index of header row, or None if not found
+        """
+        header_keywords = [
+            'WEARER', 'ITEM', 'DESCRIPTION', 'SIZE', 'TYPE', 'QTY', 'RATE', 'TOTAL',
+            'BILL', 'QUANTITY', 'AMOUNT', 'PRICE', 'CODE'
+        ]
+        
+        for row_idx, row in enumerate(table):
+            if not row:
+                continue
+            
+            # Convert row to uppercase for comparison
+            row_upper = [str(cell).upper() for cell in row]
+            row_text = ' '.join(row_upper)
+            
+            # Count how many header keywords are found in this row
+            keyword_count = sum(1 for keyword in header_keywords if keyword in row_text)
+            
+            # If we find at least 3 header keywords, consider this the header row
+            if keyword_count >= 3:
+                return row_idx
+        
+        return None
+    
+    def _map_table_columns(self, header_row: List[str]) -> Dict[str, int]:
+        """
+        Map table columns to their purposes based on header row.
+        
+        Args:
+            header_row: Header row from table
+            
+        Returns:
+            Dictionary mapping column purposes to column indices
+        """
+        column_mapping = {}
+        
+        for col_idx, header in enumerate(header_row):
+            if not header:
+                continue
+            
+            header_upper = str(header).upper()
+            
+            # Map common column headers to their purposes
+            if 'ITEM' in header_upper and 'CODE' in header_upper:
+                column_mapping['item_code'] = col_idx
+            elif 'ITEM' in header_upper and 'DESCRIPTION' in header_upper:
+                column_mapping['description'] = col_idx
+            elif header_upper == 'ITEM':  # Exact match for "ITEM" column (item codes)
+                column_mapping['item_code'] = col_idx
+            elif 'DESCRIPTION' in header_upper:
+                column_mapping['description'] = col_idx
+            elif 'RATE' in header_upper:
+                column_mapping['rate'] = col_idx
+            elif 'TOTAL' in header_upper:
+                column_mapping['total'] = col_idx
+            elif 'TYPE' in header_upper:
+                column_mapping['type'] = col_idx
+            elif 'QTY' in header_upper or 'QUANTITY' in header_upper:
+                column_mapping['quantity'] = col_idx
+            elif 'SIZE' in header_upper:
+                column_mapping['size'] = col_idx
+            elif 'WEARER' in header_upper:
+                column_mapping['wearer'] = col_idx
+        
+        # Handle common table misalignment issues
+        # If TYPE column is mapped but the previous column is empty,
+        # the actual TYPE data might be in the previous column
+        if 'type' in column_mapping:
+            type_col_idx = column_mapping['type']
+            if (type_col_idx > 0 and
+                type_col_idx < len(header_row) and
+                not header_row[type_col_idx - 1].strip()):
+                # Check if the previous column might contain the actual TYPE data
+                # by looking at a few data rows if available
+                self.logger.debug(f"TYPE column at index {type_col_idx} may be misaligned, "
+                                f"previous column {type_col_idx - 1} is empty in header")
+                # Adjust mapping to use the previous column for TYPE data
+                column_mapping['type'] = type_col_idx - 1
+                self.logger.debug(f"Adjusted TYPE column mapping from {type_col_idx} to {type_col_idx - 1}")
+        
+        return column_mapping
+    
+    def _parse_table_row_to_line_item(self, row: List[str], column_mapping: Dict[str, int], line_number: int) -> Optional[LineItem]:
+        """
+        Parse a table row into a LineItem object.
+        
+        Args:
+            row: Table row data
+            column_mapping: Mapping of column purposes to indices
+            line_number: Line number for debugging
+            
+        Returns:
+            LineItem object if parsing successful, None otherwise
+        """
+        try:
+            # Extract data based on column mapping
+            item_code = None
+            description = None
+            item_type = None
+            rate = None
+            total = None
+            quantity = 1  # Default quantity
+            
+            # Get item code
+            if 'item_code' in column_mapping:
+                item_code = row[column_mapping['item_code']].strip() if row[column_mapping['item_code']] else None
+            
+            # Get description
+            if 'description' in column_mapping:
+                description = row[column_mapping['description']].strip() if row[column_mapping['description']] else None
+            
+            # Get item type
+            if 'type' in column_mapping:
+                item_type = row[column_mapping['type']].strip() if row[column_mapping['type']] else None
+            
+            # Get rate
+            if 'rate' in column_mapping:
+                rate_str = row[column_mapping['rate']].strip() if row[column_mapping['rate']] else None
+                if rate_str:
+                    try:
+                        rate = Decimal(rate_str)
+                    except (ValueError, InvalidOperation):
+                        self.logger.warning(f"Invalid rate value '{rate_str}' at line {line_number}")
+            
+            # Get total
+            if 'total' in column_mapping:
+                total_str = row[column_mapping['total']].strip() if row[column_mapping['total']] else None
+                if total_str:
+                    try:
+                        total = Decimal(total_str)
+                    except (ValueError, InvalidOperation):
+                        self.logger.warning(f"Invalid total value '{total_str}' at line {line_number}")
+            
+            # Get quantity if available
+            if 'quantity' in column_mapping:
+                qty_str = row[column_mapping['quantity']].strip() if row[column_mapping['quantity']] else None
+                if qty_str:
+                    try:
+                        quantity = int(float(qty_str))
+                    except (ValueError, TypeError):
+                        quantity = 1  # Default to 1 if conversion fails
+            
+            # Skip rows that don't have essential data
+            if not description or not rate:
+                return None
+            
+            # Create LineItem
+            line_item = LineItem(
+                item_code=item_code,
+                description=description,
+                item_type=item_type,
+                rate=rate,
+                quantity=quantity,
+                total=total,
+                line_number=line_number,
+                raw_text=' | '.join(row)  # Join row cells for debugging
+            )
+            
+            return line_item
+            
+        except Exception as e:
+            self.logger.warning(f"Error parsing table row at line {line_number}: {e}")
+            return None
     
     def _parse_invoice_metadata(self, text: str, invoice_data: InvoiceData) -> None:
         """
@@ -471,15 +1142,10 @@ class PDFProcessor:
                 total = Decimal(match.group(9))
                 
                 return LineItem(
-                    wearer_number=wearer_number,
-                    wearer_name=wearer_name,
                     item_code=item_code,
                     description=description,
-                    size=size,
                     item_type=item_type,
-                    quantity=quantity,
                     rate=rate,
-                    total=total,
                     line_number=line_num,
                     raw_text=line
                 )
@@ -498,15 +1164,10 @@ class PDFProcessor:
                 total = Decimal(match.group(6))
                 
                 return LineItem(
-                    wearer_number=wearer_number,
-                    wearer_name=wearer_name,
                     item_code=charge_type.replace(' ', '_'),  # Convert to code format
                     description=charge_type,
-                    size="N/A",
                     item_type="Charge",
-                    quantity=quantity,
                     rate=rate,
-                    total=total,
                     line_number=line_num,
                     raw_text=line
                 )
@@ -525,15 +1186,10 @@ class PDFProcessor:
                 total = Decimal(match.group(6))
                 
                 return LineItem(
-                    wearer_number="N/A",
-                    wearer_name="NON-GARMENT",
                     item_code=item_code,
                     description=description,
-                    size="N/A",
                     item_type=item_type,
-                    quantity=quantity,
                     rate=rate,
-                    total=total,
                     line_number=line_num,
                     raw_text=line
                 )
@@ -582,6 +1238,7 @@ class PDFProcessor:
     
     def _validate_format_structure(self, invoice_data: InvoiceData) -> None:
         """
+        **DEPRECATED** for new summary validation process
         Validate that format sections are in the correct order.
         
         Args:
@@ -738,3 +1395,61 @@ class PDFProcessor:
             self.logger.error(f"Unexpected error processing PDF {pdf_path}: {e}")
         
         return result
+
+# === Module-level extraction functions for CLI ===
+
+def extract_text_from_pdf(input_path):
+    """
+    Extract raw text from a PDF invoice.
+    """
+    processor = PDFProcessor()
+    return processor._extract_text_from_pdf(Path(input_path))
+
+def extract_lines_from_pdf(input_path):
+    """
+    Extract line items from a PDF invoice using EXCLUSIVE table extraction.
+    Returns list of dicts with invoice_number added to each line item.
+    
+    Raises:
+        LineItemParsingError: If table extraction fails or finds no valid line items
+    """
+    processor = PDFProcessor()
+    invoice_data = processor.process_pdf(Path(input_path))
+    invoice_number = getattr(invoice_data, "invoice_number", None)
+    # Convert each line item to a dict
+    result = []
+    for item in getattr(invoice_data, "line_items", []):
+        # Try to use ._asdict() if it's a namedtuple, else __dict__
+        if hasattr(item, "_asdict"):
+            d = item._asdict()
+        elif hasattr(item, "__dict__"):
+            d = dict(item.__dict__)
+        else:
+            d = dict(item)
+        d["invoice_number"] = invoice_number
+        result.append(d)
+    return result
+
+def extract_parts_from_pdf(input_path):
+    """
+    Extract parts from a PDF invoice using EXCLUSIVE table extraction.
+    Returns list of dicts with all fields relevant to the parts database.
+    
+    This function provides the exact same output as extract_parts.py but uses
+    table extraction exclusively - no fallback to text extraction.
+    
+    Raises:
+        LineItemParsingError: If table extraction fails or finds no valid line items
+    """
+    lines = extract_lines_from_pdf(input_path)
+    parts = []
+    for line in lines:
+        part = {
+            "part_number": line.get("item_code"),
+            "authorized_price": str(line.get("rate")) if line.get("rate") is not None else None,
+            "description": line.get("description"),
+            "item_type": line.get("item_type"),
+            "first_seen_invoice": line.get("invoice_number"),
+        }
+        parts.append(part)
+    return parts

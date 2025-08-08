@@ -414,8 +414,172 @@ def _auto_detect_type(value: str) -> str:
     return 'string'
 
 
+@config_group.command()
+@click.option('--interactive', '-i', is_flag=True, default=True,
+              help='Run interactive setup wizard')
+@pass_context
+def setup(ctx, interactive):
+    """
+    Setup and configure the invoice detection system.
+    
+    This command provides an interactive wizard to configure key settings
+    for the invoice detection system, making it easy for non-technical users
+    to get started.
+    
+    Examples:
+        # Run interactive setup wizard
+        invoice-checker config setup
+        
+        # Run non-interactive setup (uses defaults)
+        invoice-checker config setup --no-interactive
+    """
+    try:
+        db_manager = ctx.get_db_manager()
+        
+        if interactive:
+            print_info("Invoice Detection System - Setup Wizard")
+            print_info("=" * 50)
+            print_info("This wizard will help you configure the system for your needs.")
+            print_info("")
+            
+            # Get current configuration values
+            current_config = {}
+            config_keys = [
+                'validation_mode',
+                'default_output_format',
+                'auto_add_discovered_parts',
+                'price_tolerance'
+            ]
+            
+            for key in config_keys:
+                try:
+                    current_config[key] = db_manager.get_config_value(key)
+                except:
+                    current_config[key] = None
+            
+            # Step 1: Validation Mode
+            print_info("Step 1: Validation Mode")
+            print_info("Choose how invoices should be validated:")
+            print_info("  • Parts-based: Compare against your parts database (recommended)")
+            print_info("  • Threshold-based: Flag items above a price threshold")
+            
+            validation_modes = ['parts_based', 'threshold_based']
+            current_mode = current_config.get('validation_mode', 'parts_based')
+            default_idx = validation_modes.index(current_mode) if current_mode in validation_modes else 0
+            
+            mode_choice = click.prompt(
+                f"Select validation mode [1=parts_based, 2=threshold_based]",
+                type=click.IntRange(1, 2),
+                default=default_idx + 1
+            )
+            validation_mode = validation_modes[mode_choice - 1]
+            
+            # Step 2: Output Format
+            print_info("\nStep 2: Default Output Format")
+            print_info("Choose the default format for validation reports:")
+            print_info("  • TXT: Plain text format (easy to read)")
+            print_info("  • CSV: Spreadsheet format (Excel compatible)")
+            print_info("  • JSON: Structured data format")
+            
+            output_formats = ['txt', 'csv', 'json']
+            current_format = current_config.get('default_output_format', 'txt')
+            default_idx = output_formats.index(current_format) if current_format in output_formats else 0
+            
+            format_choice = click.prompt(
+                f"Select output format [1=txt, 2=csv, 3=json]",
+                type=click.IntRange(1, 3),
+                default=default_idx + 1
+            )
+            output_format = output_formats[format_choice - 1]
+            
+            # Step 3: Unknown Parts Handling
+            print_info("\nStep 3: Unknown Parts Handling")
+            print_info("When unknown parts are found during processing:")
+            print_info("  • Prompt to add each part (interactive)")
+            print_info("  • Automatically add all parts (auto-add)")
+            print_info("  • Skip unknown parts (ignore)")
+            
+            current_auto_add = current_config.get('auto_add_discovered_parts', False)
+            if isinstance(current_auto_add, str):
+                current_auto_add = current_auto_add.lower() == 'true'
+            
+            auto_add_parts = click.confirm(
+                "Automatically add discovered parts without prompting?",
+                default=current_auto_add
+            )
+            
+            # Step 4: Price Tolerance
+            print_info("\nStep 4: Price Tolerance")
+            print_info("Set the tolerance for price comparisons (for floating point precision).")
+            print_info("Recommended: 0.001 (prices within $0.001 are considered equal)")
+            
+            current_tolerance = current_config.get('price_tolerance', 0.001)
+            if isinstance(current_tolerance, str):
+                current_tolerance = float(current_tolerance)
+            
+            price_tolerance = click.prompt(
+                "Price tolerance",
+                type=float,
+                default=current_tolerance
+            )
+            
+            # Summary
+            print_info("\nConfiguration Summary:")
+            print_info("=" * 30)
+            print_info(f"Validation Mode: {validation_mode}")
+            print_info(f"Output Format: {output_format}")
+            print_info(f"Auto-add Unknown Parts: {auto_add_parts}")
+            print_info(f"Price Tolerance: {price_tolerance}")
+            
+            if not click.confirm("\nApply these settings?", default=True):
+                print_info("Setup cancelled.")
+                return
+            
+            # Apply configuration - set interactive_discovery as opposite of auto_add_parts
+            interactive_discovery = not auto_add_parts
+            
+            db_manager.set_config_value('validation_mode', validation_mode, 'string',
+                                      'Validation mode: parts_based or threshold_based', 'validation')
+            db_manager.set_config_value('default_output_format', output_format, 'string',
+                                      'Default report output format', 'reporting')
+            db_manager.set_config_value('interactive_discovery', interactive_discovery, 'boolean',
+                                      'Enable interactive part discovery during processing', 'discovery')
+            db_manager.set_config_value('auto_add_discovered_parts', auto_add_parts, 'boolean',
+                                      'Automatically add discovered parts without user confirmation', 'discovery')
+            db_manager.set_config_value('price_tolerance', price_tolerance, 'number',
+                                      'Price comparison tolerance for floating point precision', 'validation')
+            
+            print_success("Configuration applied successfully!")
+            print_info("You can change these settings anytime using 'invoice-checker config set <key> <value>'")
+            
+        else:
+            # Non-interactive setup - apply recommended defaults
+            print_info("Applying recommended default configuration...")
+            
+            defaults = {
+                'validation_mode': ('parts_based', 'string', 'Validation mode: parts_based or threshold_based', 'validation'),
+                'default_output_format': ('txt', 'string', 'Default report output format', 'reporting'),
+                'interactive_discovery': (True, 'boolean', 'Enable interactive part discovery during processing', 'discovery'),
+                'auto_add_discovered_parts': (False, 'boolean', 'Automatically add discovered parts without user confirmation', 'discovery'),
+                'price_tolerance': (0.001, 'number', 'Price comparison tolerance for floating point precision', 'validation')
+            }
+            
+            for key, (value, data_type, description, category) in defaults.items():
+                db_manager.set_config_value(key, value, data_type, description, category)
+            
+            print_success("Default configuration applied successfully!")
+            print_info("Run 'invoice-checker config setup --interactive' to customize settings.")
+        
+    except DatabaseError as e:
+        raise CLIError(f"Database error: {e}")
+    except Exception as e:
+        logger.exception("Failed to run setup")
+        raise CLIError(f"Failed to run setup: {e}")
+
+
 # Add commands to the group
 config_group.add_command(get)
 config_group.add_command(set)
 config_group.add_command(list)
 config_group.add_command(reset)
+config_group.add_command(setup)

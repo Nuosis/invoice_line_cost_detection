@@ -18,26 +18,20 @@ class LineItem:
     Represents a single line item from an invoice.
     
     Attributes:
-        wearer_number: Employee/wearer identifier
-        wearer_name: Employee/wearer name
         item_code: Part number/item code (e.g., GS0448NVOT)
         description: Item description (e.g., SHIRT WORK LS BTN COTTON)
-        size: Item size (e.g., 3XLR, 44X32)
         item_type: Type of charge (Rent, Ruin charge, etc.)
-        quantity: Quantity/bill quantity
         rate: Unit rate/price
-        total: Line total amount
+        quantity: Quantity (defaults to 1 for compatibility)
+        total: Total price (rate * quantity, calculated automatically)
         line_number: Original line number in invoice (for debugging)
         raw_text: Original text line (for debugging)
     """
-    wearer_number: Optional[str] = None
-    wearer_name: Optional[str] = None
     item_code: Optional[str] = None
     description: Optional[str] = None
-    size: Optional[str] = None
     item_type: Optional[str] = None
-    quantity: Optional[int] = None
     rate: Optional[Decimal] = None
+    quantity: Optional[int] = 1
     total: Optional[Decimal] = None
     line_number: Optional[int] = None
     raw_text: Optional[str] = None
@@ -45,44 +39,61 @@ class LineItem:
     def __post_init__(self):
         """Validate and normalize line item data after initialization."""
         # Convert numeric strings to appropriate types
-        if isinstance(self.quantity, str):
-            try:
-                self.quantity = int(float(self.quantity))
-            except (ValueError, TypeError):
-                self.quantity = None
-                
         if isinstance(self.rate, (str, float, int)) and self.rate is not None:
             try:
                 self.rate = Decimal(str(self.rate))
             except (ValueError, TypeError):
                 self.rate = None
-                
+        
+        # Convert quantity to int if provided as string
+        if isinstance(self.quantity, str):
+            try:
+                self.quantity = int(float(self.quantity))
+            except (ValueError, TypeError):
+                self.quantity = 1  # Default to 1 if conversion fails
+        elif self.quantity is None:
+            self.quantity = 1  # Default to 1 if not provided
+        
+        # Convert total to Decimal if provided as string
         if isinstance(self.total, (str, float, int)) and self.total is not None:
             try:
                 self.total = Decimal(str(self.total))
             except (ValueError, TypeError):
                 self.total = None
+        
+        # Calculate total if not provided but rate and quantity are available
+        if (self.total is None and
+            self.rate is not None and
+            self.quantity is not None):
+            self.total = self.rate * self.quantity
 
     def is_valid(self) -> bool:
-        """Check if line item has minimum required data."""
+        """
+        Check if line item has minimum required data.
+        
+        A line item is valid if it has:
+        - A non-zero quantity (or defaults to 1)
+        - A rate/price
+        - A description (even if no part number)
+        
+        This allows for service charges, fees, and other line items without part numbers.
+        """
         return (
-            self.item_code is not None and 
-            self.item_code.strip() != "" and
+            self.quantity is not None and
+            self.quantity != 0 and
             self.rate is not None and
-            self.quantity is not None
+            self.description is not None and
+            self.description.strip() != ""
         )
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert line item to dictionary for serialization."""
         return {
-            'wearer_number': self.wearer_number,
-            'wearer_name': self.wearer_name,
             'item_code': self.item_code,
             'description': self.description,
-            'size': self.size,
             'item_type': self.item_type,
-            'quantity': self.quantity,
             'rate': float(self.rate) if self.rate else None,
+            'quantity': self.quantity,
             'total': float(self.total) if self.total else None,
             'line_number': self.line_number,
             'raw_text': self.raw_text
@@ -354,24 +365,12 @@ def validate_part_number(part_number: str) -> bool:
     return bool(re.match(r'^[A-Za-z0-9_\-\.]+$', cleaned)) and len(cleaned) >= 2
 
 
+# Legacy classes kept for backward compatibility with existing CLI code
+# These will be removed once all CLI code is updated to use the JSON-based approach
+
 @dataclass
 class InvoiceLineItem:
-    """
-    Represents a line item from an invoice for validation processing.
-    
-    This is a simplified version of LineItem specifically designed for
-    validation workflows and testing.
-    
-    Attributes:
-        part_number: Part number/item code
-        description: Item description
-        unit_price: Unit price/rate
-        quantity: Quantity
-        total_price: Total price (unit_price * quantity)
-        invoice_number: Invoice number this item belongs to
-        invoice_date: Invoice date
-        line_number: Line number in the invoice
-    """
+    """Legacy class for backward compatibility."""
     part_number: Optional[str] = None
     description: Optional[str] = None
     unit_price: Optional[Decimal] = None
@@ -382,43 +381,17 @@ class InvoiceLineItem:
     line_number: Optional[int] = None
 
     def __post_init__(self):
-        """Validate and normalize line item data after initialization."""
-        # Convert numeric strings to appropriate types
-        if isinstance(self.quantity, str):
-            try:
-                self.quantity = int(float(self.quantity))
-            except (ValueError, TypeError):
-                self.quantity = None
-                
         if isinstance(self.unit_price, (str, float, int)) and self.unit_price is not None:
-            try:
-                self.unit_price = Decimal(str(self.unit_price))
-            except (ValueError, TypeError):
-                self.unit_price = None
-                
+            self.unit_price = Decimal(str(self.unit_price))
         if isinstance(self.total_price, (str, float, int)) and self.total_price is not None:
-            try:
-                self.total_price = Decimal(str(self.total_price))
-            except (ValueError, TypeError):
-                self.total_price = None
-        
-        # Calculate total_price if not provided
-        if (self.total_price is None and
-            self.unit_price is not None and
-            self.quantity is not None):
-            self.total_price = self.unit_price * self.quantity
+            self.total_price = Decimal(str(self.total_price))
 
     def is_valid(self) -> bool:
-        """Check if line item has minimum required data."""
-        return (
-            self.part_number is not None and
-            self.part_number.strip() != "" and
-            self.unit_price is not None and
-            self.quantity is not None
-        )
+        return (self.part_number is not None and
+                self.unit_price is not None and
+                self.quantity is not None)
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert line item to dictionary for serialization."""
         return {
             'part_number': self.part_number,
             'description': self.description,
@@ -430,37 +403,10 @@ class InvoiceLineItem:
             'line_number': self.line_number
         }
 
-    @classmethod
-    def from_line_item(cls, line_item: LineItem, invoice_number: str = None, invoice_date: str = None) -> 'InvoiceLineItem':
-        """Create InvoiceLineItem from LineItem."""
-        return cls(
-            part_number=line_item.item_code,
-            description=line_item.description,
-            unit_price=line_item.rate,
-            quantity=line_item.quantity,
-            total_price=line_item.total,
-            invoice_number=invoice_number,
-            invoice_date=invoice_date,
-            line_number=line_item.line_number
-        )
-
 
 @dataclass
 class ProcessingResult:
-    """
-    Represents the result of processing/validating an invoice line item.
-    
-    This class contains the validation result and associated metadata
-    for a single line item processing operation.
-    
-    Attributes:
-        line_item: The line item that was processed
-        validation_result: Result of validation (PASS, FAIL, etc.)
-        is_valid: Whether the line item passed validation
-        issue_type: Type of issue if validation failed
-        notes: Additional notes about the processing
-        processing_timestamp: When the processing occurred
-    """
+    """Legacy class for backward compatibility."""
     line_item: InvoiceLineItem
     validation_result: Optional[str] = None
     is_valid: bool = True
@@ -469,7 +415,6 @@ class ProcessingResult:
     processing_timestamp: datetime = field(default_factory=datetime.now)
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert processing result to dictionary for serialization."""
         return {
             'line_item': self.line_item.to_dict(),
             'validation_result': self.validation_result,
@@ -481,7 +426,6 @@ class ProcessingResult:
 
     @classmethod
     def create_passed(cls, line_item: InvoiceLineItem, notes: str = None) -> 'ProcessingResult':
-        """Create a passed processing result."""
         return cls(
             line_item=line_item,
             validation_result="PASS",
@@ -492,7 +436,6 @@ class ProcessingResult:
 
     @classmethod
     def create_failed(cls, line_item: InvoiceLineItem, issue_type: str, notes: str = None) -> 'ProcessingResult':
-        """Create a failed processing result."""
         return cls(
             line_item=line_item,
             validation_result="FAIL",

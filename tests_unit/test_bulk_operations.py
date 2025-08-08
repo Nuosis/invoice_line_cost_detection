@@ -132,44 +132,10 @@ class TestDatabaseIntegration:
         with tempfile.NamedTemporaryFile(suffix='.db', delete=False) as f:
             db_path = f.name
         
-        # Initialize database with schema
-        conn = sqlite3.connect(db_path)
-        conn.execute('''
-            CREATE TABLE parts (
-                part_number TEXT PRIMARY KEY,
-                authorized_price DECIMAL(10,2) NOT NULL,
-                description TEXT,
-                category TEXT,
-                source TEXT DEFAULT 'manual',
-                first_seen_invoice TEXT,
-                is_active BOOLEAN DEFAULT 1,
-                created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                notes TEXT
-            )
-        ''')
-        conn.execute('''
-            CREATE TABLE config (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL,
-                description TEXT,
-                created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        conn.execute('''
-            CREATE TABLE part_discovery_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                part_number TEXT NOT NULL,
-                invoice_number TEXT,
-                discovered_price DECIMAL(10,2),
-                action_taken TEXT NOT NULL,
-                discovery_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                notes TEXT
-            )
-        ''')
-        conn.commit()
-        conn.close()
+        # Initialize database using migration system to ensure composite key support
+        from database.db_migration import DatabaseMigration
+        migration = DatabaseMigration(db_path)
+        migration.migrate_to_latest()
         
         db_manager = DatabaseManager(db_path)
         yield db_manager
@@ -351,44 +317,10 @@ class TestEndToEndWorkflows:
         with tempfile.NamedTemporaryFile(suffix='.db', delete=False) as f:
             db_path = f.name
         
-        # Initialize database
-        conn = sqlite3.connect(db_path)
-        conn.execute('''
-            CREATE TABLE parts (
-                part_number TEXT PRIMARY KEY,
-                authorized_price DECIMAL(10,2) NOT NULL,
-                description TEXT,
-                category TEXT,
-                source TEXT DEFAULT 'manual',
-                first_seen_invoice TEXT,
-                is_active BOOLEAN DEFAULT 1,
-                created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                notes TEXT
-            )
-        ''')
-        conn.execute('''
-            CREATE TABLE config (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL,
-                description TEXT,
-                created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        conn.execute('''
-            CREATE TABLE part_discovery_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                part_number TEXT NOT NULL,
-                invoice_number TEXT,
-                discovered_price DECIMAL(10,2),
-                action_taken TEXT NOT NULL,
-                discovery_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                notes TEXT
-            )
-        ''')
-        conn.commit()
-        conn.close()
+        # Initialize database using migration system to ensure composite key support
+        from database.db_migration import DatabaseMigration
+        migration = DatabaseMigration(db_path)
+        migration.migrate_to_latest()
         
         db_manager = DatabaseManager(db_path)
         

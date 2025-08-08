@@ -114,7 +114,17 @@ uv run invoice-checker status
 
 #### Process Invoices
 ```bash
-uv run invoice-checker process --input /path/to/invoices --output report.csv
+# Process invoices with parts-based validation (saves to documents/ and auto-opens)
+uv run invoice-checker invoice process /path/to/invoices
+
+# Process with interactive discovery
+uv run invoice-checker invoice process /path/to/invoices --interactive
+
+# Process without auto-opening reports
+uv run invoice-checker invoice process /path/to/invoices --no-auto-open
+
+# Batch processing multiple folders
+uv run invoice-checker invoice batch /path/to/invoice_folders --output-dir ./reports
 ```
 
 #### Manage Parts Database
@@ -123,10 +133,25 @@ uv run invoice-checker process --input /path/to/invoices --output report.csv
 uv run invoice-checker parts list
 
 # Add a new part
-uv run invoice-checker parts add --code "GS0448" --description "SHIRT WORK LS BTN COTTON" --rate 0.30
+uv run invoice-checker parts add GP0171NAVY 15.50 --description "Navy Work Pants"
 
-# Interactive parts discovery
-uv run invoice-checker discover --input /path/to/invoices
+# Import parts from CSV
+uv run invoice-checker parts import parts.csv
+
+# Export parts to CSV
+uv run invoice-checker parts export all_parts.csv
+```
+
+#### Discovery Management
+```bash
+# Review discovered parts from recent processing
+uv run invoice-checker discovery review
+
+# View discovery statistics
+uv run invoice-checker discovery stats --days 7
+
+# Export discovery data
+uv run invoice-checker discovery export --output discovery_data.csv
 ```
 
 ### Example Usage
@@ -135,19 +160,44 @@ uv run invoice-checker discover --input /path/to/invoices
 # Check system status and database connectivity
 uv run invoice-checker status
 
-# Process all PDFs in the 'invoices' folder
-uv run invoice-checker process --input docs/invoices --output overcharges.csv
+# Process all PDFs in the 'invoices' folder (saves to documents/ and auto-opens)
+uv run invoice-checker invoice process ./docs/invoices
 
-# Interactive discovery of new parts from invoices
-uv run invoice-checker discover --input ./invoices
+# Process with interactive parts discovery
+uv run invoice-checker invoice process ./invoices --interactive
+
+# Process without auto-opening reports
+uv run invoice-checker invoice process ./invoices --no-auto-open
 
 # List all parts in database
 uv run invoice-checker parts list
 
+# Review unknown parts from recent processing
+uv run invoice-checker discovery review
+
 # Get help for any command
 uv run invoice-checker --help
-uv run invoice-checker process --help
+uv run invoice-checker invoice --help
+uv run invoice-checker parts --help
 ```
+
+### 📁 Report Location & Auto-Opening
+
+**New in this version**: Reports are automatically saved to the `documents/` directory and opened in your default application!
+
+- **📍 Location**: All reports are saved to `./documents/` directory
+- **🚀 Auto-Open**: Reports automatically open in Excel (CSV), Notepad (TXT), or your default viewer (JSON)
+- **🔧 Control**: Use `--no-auto-open` to disable automatic opening
+- **📝 Custom Path**: Use `--output` to specify a different location
+
+**Report Files**:
+- `{invoice_number}_analysis_{timestamp}.csv` - Main validation report
+- `{invoice_number}_report_{timestamp}.txt` - Human-readable summary
+- `{invoice_number}_validation_{timestamp}.json` - Complete validation data
+
+**Example**: After processing, you'll see files like:
+- `documents/INV001_analysis_20250108_143022.csv` (opens in Excel)
+- `documents/INV001_report_20250108_143022.txt` (opens in Notepad)
 
 ## Output Format
 
@@ -174,13 +224,13 @@ The text report provides:
 
 ### Parts Database
 The system uses a SQLite database to store known parts and their expected rates:
-- **Database Location**: `invoice_data.db` (created automatically)
+- **Database Location**: `invoice_detection.db` (created automatically)
 - **Parts Management**: Add, update, and list parts via CLI commands
 - **Validation**: Compare invoice items against database entries
 
 ### Supported File Formats
 - **Input**: PDF files only
-- **Output**: CSV (.csv) or Text (.txt) files
+- **Output**: CSV (.csv), JSON (.json), or Text (.txt) files
 - **Database**: SQLite (.db) files
 
 ## Troubleshooting
@@ -241,7 +291,10 @@ invoice_line_cost_detection/
 ├── database/                         # Database operations
 │   ├── models.py                    # Database models
 │   └── database.py                  # Database connection and operations
-├── unit_tests/                       # Test suite
+├── tests_unit/                       # Unit tests
+├── tests_e2e/                        # End-to-end tests
+├── tests_journey/                    # Journey tests
+├── test_validation/                  # Validation tests
 ├── docs/                            # Documentation and sample files
 ├── pyproject.toml                   # Project configuration
 └── README.md                        # This file
@@ -288,13 +341,22 @@ The `invoice-launcher.sh` script provides:
 
 ```bash
 # Run all tests
-uv run python -m pytest unit_tests/
+uv run python -m pytest tests_unit/
+
+# Run end-to-end tests
+uv run python -m pytest tests_e2e/
+
+# Run journey tests
+uv run python -m pytest tests_journey/
+
+# Run validation tests
+uv run python -m pytest test_validation/
 
 # Run with coverage
-uv run python -m pytest unit_tests/ --cov=.
+uv run python -m pytest tests_unit/ --cov=.
 
 # Run specific test
-uv run python -m pytest unit_tests/test_cli.py
+uv run python -m pytest tests_unit/test_cli.py
 ```
 
 ### Code Quality

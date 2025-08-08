@@ -83,7 +83,7 @@ class TestDiscoverPdfFiles:
             txt_path = Path(temp_dir) / "not_a_pdf.txt"
             txt_path.write_text("not a pdf")
             
-            with pytest.raises(ProcessingError, match="No PDF files found"):
+            with pytest.raises(ProcessingError, match="File is not a PDF"):
                 _discover_pdf_files(txt_path)
     
     def test_discover_empty_directory_raises_error(self):
@@ -119,7 +119,8 @@ class TestCreateValidationConfig:
         assert isinstance(config, ValidationConfiguration)
         assert config.price_discrepancy_warning_threshold == threshold
         assert config.price_discrepancy_critical_threshold == threshold * 2
-        assert config.interactive_discovery is True
+        # For threshold_based mode, interactive_discovery should be False
+        assert config.interactive_discovery is False
         assert config.batch_collect_unknown_parts is False
     
     def test_create_parts_based_config(self):
@@ -149,8 +150,13 @@ class TestCreateValidationConfig:
                 db_manager=self.mock_db_manager
             )
             
-            assert config.interactive_discovery is True
-            assert config.batch_collect_unknown_parts is True
+            # For threshold_based mode, interactive_discovery should be False regardless of parameter
+            if mode == 'threshold_based':
+                assert config.interactive_discovery is False
+                assert config.batch_collect_unknown_parts is False
+            else:  # parts_based mode
+                assert config.interactive_discovery is True
+                assert config.batch_collect_unknown_parts is True
 
 
 class TestGenerateProcessingResults:
@@ -258,9 +264,10 @@ class TestExecuteValidationWorkflow:
                 mock_validation_result, mock_discovery_results
             )
             
-            # Mock report generation
-            self.mock_workflow.report_generator.generate_anomaly_report.return_value = {
-                'total_anomalies': 2
+            # Mock report generation - the actual implementation calls generate_all_reports
+            self.mock_workflow.report_generator.generate_all_reports.return_value = {
+                'total_anomalies': 2,
+                'anomalies': []
             }
             
             # Mock validation summary
@@ -292,7 +299,7 @@ class TestExecuteValidationWorkflow:
             self.mock_workflow.process_single_invoice.assert_called_once_with(
                 pdf_path, interactive_discovery=False
             )
-            self.mock_workflow.report_generator.generate_anomaly_report.assert_called_once()
+            self.mock_workflow.report_generator.generate_all_reports.assert_called_once()
             self.mock_workflow.get_validation_summary.assert_called_once()
             
             assert result == expected_summary

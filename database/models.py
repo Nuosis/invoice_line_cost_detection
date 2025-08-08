@@ -37,11 +37,12 @@ class ConfigurationError(DatabaseError):
 class Part:
     """
     Represents a part in the master parts database.
-    
+
     Attributes:
-        part_number: Unique part identifier (primary key)
+        part_number: Part identifier (can be empty for items without traditional part numbers)
         authorized_price: Expected/authorized price with 4 decimal precision
         description: Human-readable part description
+        item_type: Type/category of the part (e.g., Rent, Charge, etc.)
         category: Optional categorization for parts organization
         source: How the part was added ('manual', 'discovered', 'imported')
         first_seen_invoice: Invoice number where this part was first discovered
@@ -49,10 +50,12 @@ class Part:
         last_updated: When the part was last modified
         is_active: Soft delete flag for deactivating parts
         notes: Additional notes or comments about the part
+        composite_key: Computed composite identifier (item_type|description|part_number)
     """
-    part_number: str
+    part_number: Optional[str]
     authorized_price: Decimal
     description: Optional[str] = None
+    item_type: Optional[str] = None
     category: Optional[str] = None
     source: Literal['manual', 'discovered', 'imported'] = 'manual'
     first_seen_invoice: Optional[str] = None
@@ -60,10 +63,50 @@ class Part:
     last_updated: Optional[datetime] = None
     is_active: bool = True
     notes: Optional[str] = None
+    composite_key: Optional[str] = field(init=False)
 
     def __post_init__(self):
-        """Validate part data after initialization."""
+        """Validate part data and generate composite key after initialization."""
+        self.composite_key = self.generate_composite_key()
         self.validate()
+
+    @staticmethod
+    def normalize_component(component: Optional[str]) -> str:
+        """
+        Normalize a component for composite key generation.
+        
+        Args:
+            component: Component to normalize
+            
+        Returns:
+            Normalized component string
+        """
+        if not component:
+            return ""
+        
+        # Strip whitespace and convert to uppercase for consistency
+        normalized = str(component).strip().upper()
+        
+        # Replace multiple spaces with single space
+        normalized = re.sub(r'\s+', ' ', normalized)
+        
+        return normalized
+
+    def generate_composite_key(self) -> str:
+        """
+        Generate composite key from item_type, description, and part_number.
+        
+        Returns:
+            Composite key string in format: item_type|description|part_number
+        """
+        item_type_norm = self.normalize_component(self.item_type)
+        description_norm = self.normalize_component(self.description)
+        part_number_norm = self.normalize_component(self.part_number)
+        
+        # Create composite key - all components are included even if empty
+        composite = f"{item_type_norm}|{description_norm}|{part_number_norm}"
+        
+        return composite
 
     def validate(self) -> None:
         """
@@ -72,18 +115,23 @@ class Part:
         Raises:
             ValidationError: If validation fails
         """
-        # Validate part number
-        if not self.part_number or not isinstance(self.part_number, str):
-            raise ValidationError("Part number must be a non-empty string")
+        # At least one of part_number, description, or item_type must be provided
+        if not any([self.part_number, self.description, self.item_type]):
+            raise ValidationError("At least one of part_number, description, or item_type must be provided")
         
-        if not self.part_number.strip():
-            raise ValidationError("Part number cannot be empty or whitespace only")
-        
-        # Basic part number format validation (alphanumeric with some special chars)
-        if not re.match(r'^[A-Za-z0-9_\-\.]+$', self.part_number):
-            raise ValidationError(
-                "Part number can only contain letters, numbers, underscores, hyphens, and periods"
-            )
+        # Validate part number format if provided
+        if self.part_number:
+            if not isinstance(self.part_number, str):
+                raise ValidationError("Part number must be a string")
+            
+            if not self.part_number.strip():
+                raise ValidationError("Part number cannot be empty or whitespace only")
+            
+            # Basic part number format validation (alphanumeric with some special chars)
+            if not re.match(r'^[A-Za-z0-9_\-\.\s@]+$', self.part_number):
+                raise ValidationError(
+                    "Part number can only contain letters, numbers, underscores, hyphens, periods, spaces, and @ symbols"
+                )
 
         # Validate authorized price
         if not isinstance(self.authorized_price, (Decimal, float, int)):
@@ -106,19 +154,25 @@ class Part:
         if not isinstance(self.is_active, bool):
             raise ValidationError("is_active must be a boolean")
 
+        # Validate composite key is not empty
+        if not self.composite_key or self.composite_key == "||":
+            raise ValidationError("Composite key cannot be empty - at least one component must have a value")
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert part to dictionary for database operations."""
         return {
             'part_number': self.part_number,
             'authorized_price': float(self.authorized_price),
             'description': self.description,
+            'item_type': self.item_type,
             'category': self.category,
             'source': self.source,
             'first_seen_invoice': self.first_seen_invoice,
             'created_date': self.created_date.isoformat() if self.created_date else None,
             'last_updated': self.last_updated.isoformat() if self.last_updated else None,
             'is_active': self.is_active,
-            'notes': self.notes
+            'notes': self.notes,
+            'composite_key': self.composite_key
         }
 
     @classmethod
@@ -132,11 +186,12 @@ class Part:
         last_updated = None
         if data.get('last_updated'):
             last_updated = datetime.fromisoformat(data['last_updated'])
-
+    
         return cls(
-            part_number=data['part_number'],
+            part_number=data.get('part_number'),  # Allow None for part_number
             authorized_price=Decimal(str(data['authorized_price'])),
             description=data.get('description'),
+            item_type=data.get('item_type'),
             category=data.get('category'),
             source=data.get('source', 'manual'),
             first_seen_invoice=data.get('first_seen_invoice'),
@@ -145,6 +200,61 @@ class Part:
             is_active=data.get('is_active', True),
             notes=data.get('notes')
         )
+
+    @classmethod
+    def create_from_line_item(cls, item_type: Optional[str], description: Optional[str],
+                            part_number: Optional[str], authorized_price: Decimal,
+                            **kwargs) -> 'Part':
+        """
+        Create a Part instance from line item components.
+        
+        Args:
+            item_type: Item type from line item
+            description: Description from line item
+            part_number: Part number from line item (can be None)
+            authorized_price: Price for the part
+            **kwargs: Additional part attributes
+            
+        Returns:
+            Part instance with generated composite key
+        """
+        return cls(
+            part_number=part_number,
+            authorized_price=authorized_price,
+            description=description,
+            item_type=item_type,
+            **kwargs
+        )
+
+    def get_identifier(self) -> str:
+        """
+        Get the unique identifier for this part.
+        
+        Returns:
+            Composite key that uniquely identifies this part
+        """
+        return self.composite_key or self.generate_composite_key()
+
+    @classmethod
+    def generate_identifier_from_components(cls, item_type: Optional[str],
+                                          description: Optional[str],
+                                          part_number: Optional[str]) -> str:
+        """
+        Generate composite identifier from components without creating a Part instance.
+        
+        Args:
+            item_type: Item type component
+            description: Description component
+            part_number: Part number component
+            
+        Returns:
+            Composite key string
+        """
+        item_type_norm = cls.normalize_component(item_type)
+        description_norm = cls.normalize_component(description)
+        part_number_norm = cls.normalize_component(part_number)
+        
+        return f"{item_type_norm}|{description_norm}|{part_number_norm}"
 
 
 @dataclass

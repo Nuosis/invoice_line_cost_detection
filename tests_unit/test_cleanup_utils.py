@@ -162,7 +162,7 @@ class TestCleanupTestBackupFiles(unittest.TestCase):
         for filename in non_test_files:
             self.assertTrue((self.temp_path / filename).exists())
     
-    @patch('unit_tests.test_cleanup_utils.logger')
+    @patch('tests_unit.test_cleanup_utils.logger')
     def test_cleanup_test_backup_files_with_permission_error(self, mock_logger):
         """Test cleanup handles permission errors gracefully."""
         # Create a test file
@@ -179,7 +179,7 @@ class TestCleanupTestBackupFiles(unittest.TestCase):
         self.assertTrue(mock_logger.warning.called)
         self.assertGreater(mock_logger.warning.call_count, 0)
     
-    @patch('unit_tests.test_cleanup_utils.logger')
+    @patch('tests_unit.test_cleanup_utils.logger')
     def test_cleanup_test_backup_files_logs_info_when_files_deleted(self, mock_logger):
         """Test that info is logged when files are deleted."""
         # Create test file
@@ -272,7 +272,7 @@ class TestCleanupAllBackupFiles(unittest.TestCase):
         for filename in non_backup_files:
             self.assertTrue((self.temp_path / filename).exists())
     
-    @patch('unit_tests.test_cleanup_utils.logger')
+    @patch('tests_unit.test_cleanup_utils.logger')
     def test_cleanup_all_backup_files_with_error(self, mock_logger):
         """Test cleanup handles errors gracefully."""
         # Create a backup file
@@ -287,7 +287,7 @@ class TestCleanupAllBackupFiles(unittest.TestCase):
         self.assertEqual(result, [])
         mock_logger.warning.assert_called_once()
     
-    @patch('unit_tests.test_cleanup_utils.logger')
+    @patch('tests_unit.test_cleanup_utils.logger')
     def test_cleanup_all_backup_files_logs_info_when_files_deleted(self, mock_logger):
         """Test that info is logged when files are deleted."""
         # Create backup file

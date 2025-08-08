@@ -126,8 +126,7 @@ class TestInvoiceData:
         # Create sample line item
         line_item = LineItem(
             item_code="TEST001",
-            rate=Decimal('1.00'),
-            quantity=1
+            rate=Decimal('1.00')
         )
         
         # Create sample format sections
@@ -201,8 +200,7 @@ class TestInvoiceData:
         line_item = LineItem(
             item_code="TEST001",
             description="Test Item",
-            rate=Decimal('1.50'),
-            quantity=2
+            rate=Decimal('1.50')
         )
         
         format_section = FormatSection('TOTAL', Decimal('3.00'))
@@ -233,21 +231,18 @@ class TestLineItem:
         line_item = LineItem(
             item_code="TEST001",
             description="Test Item",
-            rate=Decimal('1.50'),
-            quantity=2
+            rate=Decimal('1.50')
         )
         
         assert line_item.item_code == "TEST001"
         assert line_item.description == "Test Item"
         assert line_item.rate == Decimal('1.50')
-        assert line_item.quantity == 2
     
     def test_line_item_validation_valid(self):
         """Test validation of valid line item."""
         line_item = LineItem(
             item_code="TEST001",
-            rate=Decimal('1.50'),
-            quantity=2
+            rate=Decimal('1.50')
         )
         
         assert line_item.is_valid()
@@ -259,29 +254,26 @@ class TestLineItem:
         assert not line_item.is_valid()
         
         # Missing item code
-        line_item = LineItem(rate=Decimal('1.50'), quantity=2)
+        line_item = LineItem(rate=Decimal('1.50'))
         assert not line_item.is_valid()
-        
+
         # Missing rate
-        line_item = LineItem(item_code="TEST001", quantity=2)
+        line_item = LineItem(item_code="TEST001")
         assert not line_item.is_valid()
-        
-        # Missing quantity
+
+        # Valid line item
         line_item = LineItem(item_code="TEST001", rate=Decimal('1.50'))
-        assert not line_item.is_valid()
+        assert line_item.is_valid()
     
     def test_line_item_type_conversion(self):
         """Test automatic type conversion in LineItem."""
         line_item = LineItem(
             item_code="TEST001",
-            rate="1.50",  # String
-            quantity="2"  # String
+            rate="1.50"  # String
         )
         
         assert isinstance(line_item.rate, Decimal)
         assert line_item.rate == Decimal('1.50')
-        assert isinstance(line_item.quantity, int)
-        assert line_item.quantity == 2
 
 
 class TestFormatSection:

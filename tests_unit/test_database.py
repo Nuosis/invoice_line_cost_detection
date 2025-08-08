@@ -893,9 +893,9 @@ class TestModelValidation(unittest.TestCase):
         with self.assertRaises(ValidationError):
             Part(part_number="TEST001", authorized_price=Decimal("10.0"), source="invalid")
         
-        # Test invalid part number characters
+        # Test invalid part number characters (@ is now allowed, so test with truly invalid chars)
         with self.assertRaises(ValidationError):
-            Part(part_number="TEST@001", authorized_price=Decimal("10.0"))
+            Part(part_number="TEST#001", authorized_price=Decimal("10.0"))
     
     def test_configuration_validation_success(self):
         """Test successful configuration validation."""
