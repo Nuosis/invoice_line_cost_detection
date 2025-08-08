@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.20] - 2025-08-08
+
+### Changes
+
+Modified files:
+  - Modified: cli/commands/invoice_commands.py
+  - Modified: invoice-launcher.bat
+  - Modified: invoice-launcher.sh
+  - Modified: processing/invoice_processor.py
+  - Modified: processing/part_discovery.py
+  - Modified: processing/report_generator.py
+  - Modified: processing/report_utils.py
+New files:
+  - Added: test_output_location_logic.py
+
+**Deployment:** 2025-08-08 14:21:34 MDT
+
+
 ## [1.0.19] - 2025-08-08
 
 ### Changes

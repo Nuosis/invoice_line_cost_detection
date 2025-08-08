@@ -436,6 +436,24 @@ launch_interactive_app() {
     log_success "Application session completed"
 }
 
+# Launch quick processing
+launch_quick_process() {
+    log_info "Starting Quick Process Mode..."
+    
+    cd "$PROJECT_DIR"
+    
+    # Check system status first
+    log_info "Checking system status..."
+    uv run invoice-checker status
+    
+    # Launch quick processing with defaults
+    log_info "Running quick processing with all defaults..."
+    uv run invoice-checker quick
+    
+    cd ..
+    log_success "Quick processing completed"
+}
+
 # Setup workflow
 setup_workflow() {
     log_info "Starting setup workflow..."
@@ -564,13 +582,14 @@ show_main_menu() {
     echo -e "${CYAN}╚═══════════════════════════════════════════════════════════════════════════════════╝${NC}"
     echo ""
     echo -e "${GREEN}1)${NC} Launch Application  - Start the interactive Invoice Rate Detection System"
-    echo -e "${GREEN}2)${NC} Setup               - Install, update, and configure system"
-    echo -e "${GREEN}3)${NC} Configuration       - Setup and manage system options"
-    echo -e "${GREEN}4)${NC} Help                - Show help and documentation"
-    echo -e "${GREEN}5)${NC} Exit                - Exit the launcher"
+    echo -e "${GREEN}2)${NC} Quick Process       - Process invoices with defaults (discovery enabled)"
+    echo -e "${GREEN}3)${NC} Setup               - Install, update, and configure system"
+    echo -e "${GREEN}4)${NC} Configuration       - Setup and manage system options"
+    echo -e "${GREEN}5)${NC} Help                - Show help and documentation"
+    echo -e "${GREEN}6)${NC} Exit                - Exit the launcher"
     echo ""
-    echo -e "${YELLOW}Note: All invoice processing, parts management, and database operations"
-    echo -e "are available through the interactive application (option 1).${NC}"
+    echo -e "${YELLOW}Note: Quick Process uses all configured defaults but still discovers new parts."
+    echo -e "Use Launch Application for full interactive control.${NC}"
     echo ""
 }
 
@@ -624,7 +643,7 @@ main() {
         show_banner
         show_main_menu
         
-        read -p "Select option (1-5): " choice
+        read -p "Select option (1-6): " choice
         
         case $choice in
             1)
@@ -632,13 +651,17 @@ main() {
                 read -p "Press Enter to continue..."
                 ;;
             2)
+                launch_quick_process
+                read -p "Press Enter to continue..."
+                ;;
+            3)
                 setup_workflow
                 # Check if user selected "Return to main menu" (exit code 5)
                 if [[ $? -ne 5 ]]; then
                     read -p "Press Enter to continue..."
                 fi
                 ;;
-            3)
+            4)
                 # Configuration management (interactive setup wizard)
                 if [[ -d "$PROJECT_DIR" ]]; then
                     cd "$PROJECT_DIR"
@@ -649,15 +672,15 @@ main() {
                 fi
                 read -p "Press Enter to continue..."
                 ;;
-            4)
+            5)
                 show_help
                 ;;
-            5)
+            6)
                 log_info "Thank you for using Invoice Rate Detection System!"
                 exit 0
                 ;;
             *)
-                log_error "Invalid option. Please select 1-5."
+                log_error "Invalid option. Please select 1-6."
                 read -p "Press Enter to continue..."
                 ;;
         esac

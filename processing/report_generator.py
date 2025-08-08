@@ -25,33 +25,49 @@ from .report_utils import (
 class SimpleReportGenerator:
     """Simple report generator for validation JSON objects."""
     
-    def generate_reports(self, validation_data: Dict[str, Any], output_base_path: str = None, auto_open: bool = True) -> Dict[str, str]:
+    def generate_reports(self, validation_data: Dict[str, Any], output_base_path: str = None,
+                        auto_open: bool = True, preferred_format: str = "csv",
+                        generate_all_formats: bool = True) -> Dict[str, str]:
         """
-        Generate all three report formats from validation JSON.
+        Generate report formats from validation JSON.
         
         Args:
             validation_data: The validation JSON object
             output_base_path: Base path for output files (optional, defaults to documents/ directory)
             auto_open: Whether to automatically open the generated reports (default: True)
+            preferred_format: Preferred format for auto-opening (default: "csv")
+            generate_all_formats: Whether to generate all formats or just the preferred one (default: True)
             
         Returns:
-            Dict with 'json', 'txt', and 'csv' keys containing the generated content
+            Dict with format keys containing the generated content
         """
-        reports = {
-            'json': self.generate_json_report(validation_data),
-            'txt': self.generate_txt_report(validation_data),
-            'csv': self.generate_csv_report(validation_data)
-        }
+        reports = {}
         
-        # Always write to files (use documents directory if no path specified)
+        # Generate requested formats
+        if generate_all_formats:
+            reports = {
+                'json': self.generate_json_report(validation_data),
+                'txt': self.generate_txt_report(validation_data),
+                'csv': self.generate_csv_report(validation_data)
+            }
+        else:
+            # Generate only the preferred format
+            if preferred_format == 'json':
+                reports['json'] = self.generate_json_report(validation_data)
+            elif preferred_format == 'txt':
+                reports['txt'] = self.generate_txt_report(validation_data)
+            else:  # default to csv
+                reports['csv'] = self.generate_csv_report(validation_data)
+        
+        # CRITICAL: Do NOT fallback to documents directory - use the provided path
         if output_base_path is None:
-            output_base_path = get_documents_directory()
+            raise ValueError("output_base_path must be provided - no default fallback allowed")
         
-        report_files = self._write_reports_to_files(reports, output_base_path, validation_data)
+        report_files = self._write_reports_to_files(reports, output_base_path, validation_data, preferred_format)
         
-        # Auto-open reports if requested
+        # Auto-open only the preferred format if requested
         if auto_open and report_files:
-            auto_open_reports(report_files, primary_format="csv")
+            auto_open_reports(report_files, primary_format=preferred_format)
         
         return reports
     
@@ -459,38 +475,56 @@ class SimpleReportGenerator:
             'Raw Text': raw_text
         }
     
-    def _write_reports_to_files(self, reports: Dict[str, str], base_path: str, validation_data: Dict[str, Any]) -> Dict[str, Path]:
+    def _write_reports_to_files(self, reports: Dict[str, str], base_path: str, validation_data: Dict[str, Any], preferred_format: str = "csv") -> Dict[str, Path]:
         """
-        Write reports to files.
+        Write reports to files with proper naming and date folder structure.
         
+        Args:
+            reports: Dictionary of report content by format
+            base_path: Base path for output files
+            validation_data: Validation data containing invoice metadata
+            preferred_format: Preferred format for naming consistency
+            
         Returns:
             Dictionary mapping format to file path for auto-opening
         """
         base_path = Path(base_path)
-        base_path.mkdir(parents=True, exist_ok=True)
         
-        invoice_num = validation_data.get('invoice_metadata', {}).get('invoice_number', 'unknown')
+        # Create date-based subdirectory: selected_destination/YYYYMMDD/
+        date_folder = datetime.now().strftime('%Y%m%d')
+        output_dir = base_path / date_folder
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Get invoice number, handle "unknown" case
+        invoice_num = validation_data.get('invoice_metadata', {}).get('invoice_number')
+        if not invoice_num or invoice_num.lower() == 'unknown':
+            # When no specific invoice selected, drop "unknown" from title
+            base_name = "report"
+        else:
+            base_name = invoice_num
+            
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         
         report_files = {}
         
-        # Write JSON
-        json_path = base_path / f"{invoice_num}_validation_{timestamp}.json"
-        with open(json_path, 'w', encoding='utf-8') as f:
-            f.write(reports['json'])
-        report_files['json'] = json_path
+        # Write only the formats that were generated
+        if 'json' in reports:
+            json_path = output_dir / f"{base_name}_validation_{timestamp}.json"
+            with open(json_path, 'w', encoding='utf-8') as f:
+                f.write(reports['json'])
+            report_files['json'] = json_path
         
-        # Write TXT
-        txt_path = base_path / f"{invoice_num}_report_{timestamp}.txt"
-        with open(txt_path, 'w', encoding='utf-8') as f:
-            f.write(reports['txt'])
-        report_files['txt'] = txt_path
+        if 'txt' in reports:
+            txt_path = output_dir / f"{base_name}_report_{timestamp}.txt"
+            with open(txt_path, 'w', encoding='utf-8') as f:
+                f.write(reports['txt'])
+            report_files['txt'] = txt_path
         
-        # Write CSV
-        csv_path = base_path / f"{invoice_num}_analysis_{timestamp}.csv"
-        with open(csv_path, 'w', encoding='utf-8', newline='') as f:
-            f.write(reports['csv'])
-        report_files['csv'] = csv_path
+        if 'csv' in reports:
+            csv_path = output_dir / f"{base_name}_analysis_{timestamp}.csv"
+            with open(csv_path, 'w', encoding='utf-8', newline='') as f:
+                f.write(reports['csv'])
+            report_files['csv'] = csv_path
         
         return report_files
 

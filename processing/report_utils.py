@@ -31,7 +31,9 @@ def get_documents_directory() -> Path:
     documents_dir = Path.cwd() / "documents"
     documents_dir.mkdir(exist_ok=True)
     
-    logger.info(f"Using documents directory: {documents_dir}")
+    # Only log when this is actually being used as the final output location
+    # The CLI should pass explicit output paths to avoid using this default
+    logger.debug(f"Using fallback documents directory: {documents_dir}")
     return documents_dir
 
 
@@ -64,24 +66,50 @@ def open_file_in_default_application(file_path: Path) -> bool:
         logger.error(f"File does not exist: {file_path}")
         return False
     
+    # Check file size and readability
+    try:
+        file_size = file_path.stat().st_size
+        logger.info(f"Attempting to open file: {file_path} (size: {file_size} bytes)")
+        
+        # Verify file is readable
+        with open(file_path, 'r', encoding='utf-8') as f:
+            f.read(100)  # Read first 100 chars to verify file is valid
+            
+    except Exception as e:
+        logger.error(f"File validation failed for {file_path}: {e}")
+        return False
+    
     try:
         system = platform.system().lower()
+        logger.info(f"Opening file on {system} system: {file_path}")
         
         if system == "windows":
             # Windows
             os.startfile(str(file_path))
         elif system == "darwin":
             # macOS
-            subprocess.run(["open", str(file_path)], check=True)
+            result = subprocess.run(["open", str(file_path)],
+                                  capture_output=True, text=True, timeout=10)
+            if result.returncode != 0:
+                logger.error(f"macOS open command failed: {result.stderr}")
+                return False
         else:
             # Linux and other Unix-like systems
-            subprocess.run(["xdg-open", str(file_path)], check=True)
+            result = subprocess.run(["xdg-open", str(file_path)],
+                                  capture_output=True, text=True, timeout=10)
+            if result.returncode != 0:
+                logger.error(f"Linux xdg-open command failed: {result.stderr}")
+                return False
         
         logger.info(f"Successfully opened file: {file_path}")
         return True
         
+    except subprocess.TimeoutExpired:
+        logger.error(f"Timeout opening file {file_path}")
+        return False
     except Exception as e:
         logger.error(f"Failed to open file {file_path}: {e}")
+        logger.error(f"Exception type: {type(e).__name__}")
         return False
 
 

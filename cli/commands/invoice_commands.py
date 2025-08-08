@@ -37,6 +37,52 @@ from database.models import Part, PartDiscoveryLog, DatabaseError, ValidationErr
 logger = logging.getLogger(__name__)
 
 
+def _load_config_values(db_manager):
+    """
+    Load configuration values from database with fallback defaults.
+    
+    Args:
+        db_manager: Database manager instance
+        
+    Returns:
+        Dictionary of configuration values with proper type conversion
+    """
+    config_values = {}
+    
+    # Configuration keys to load
+    config_keys = [
+        'default_output_format',
+        'interactive_discovery',
+        'validation_mode',
+        'price_tolerance',
+        'default_invoice_location',
+        'auto_output_location',
+        'auto_add_discovered_parts',
+        'preconfigured_mode'
+    ]
+    
+    # Load each config value with fallback to defaults
+    for key in config_keys:
+        try:
+            config = db_manager.get_config(key)
+            config_values[key] = config.get_typed_value()
+        except Exception:
+            # Fallback to hardcoded defaults if config not found
+            defaults = {
+                'default_output_format': 'txt',
+                'interactive_discovery': True,
+                'validation_mode': 'parts_based',
+                'price_tolerance': 0.001,
+                'default_invoice_location': 'desktop/invoices/',
+                'auto_output_location': True,
+                'auto_add_discovered_parts': False,
+                'preconfigured_mode': False
+            }
+            config_values[key] = defaults.get(key)
+    
+    return config_values
+
+
 # Create invoice command group
 @click.group(name='invoice')
 def invoice_group():
@@ -107,19 +153,19 @@ def extract_parts(ctx, input_path, output):
 @invoice_group.command()
 @click.argument('input_path', type=click.Path(exists=True), required=False)
 @click.option('--output', '-o', type=click.Path(), default=None,
-              help='Output report file path (defaults to documents/ directory)')
-@click.option('--format', '-f', type=OUTPUT_FORMAT, default='txt',
-              help='Output format (csv, txt, json)')
-@click.option('--interactive', '-i', is_flag=True, default=True,
-              help='Enable interactive part discovery')
+              help='Output report file path (defaults to configured location or documents/ directory)')
+@click.option('--format', '-f', type=OUTPUT_FORMAT, default=None,
+              help='Output format (csv, txt, json) - uses config default if not specified')
+@click.option('--interactive', '-i', is_flag=True, default=None,
+              help='Enable interactive part discovery - uses config default if not specified')
 @click.option('--collect-unknown', is_flag=True,
               help='Collect unknown parts for later review')
 @click.option('--session-id', type=str,
               help='Custom processing session ID')
 @click.option('--validation-mode', type=click.Choice(['parts_based', 'threshold_based']),
-              default='parts_based', help='Validation mode')
-@click.option('--threshold', '-t', type=PRICE, default=Decimal('0.30'),
-              help='Threshold for threshold-based mode')
+              default=None, help='Validation mode - uses config default if not specified')
+@click.option('--threshold', '-t', type=PRICE, default=None,
+              help='Threshold for threshold-based mode - uses config default if not specified')
 @click.option('--no-auto-open', is_flag=True,
               help='Disable automatic opening of generated reports')
 @pass_context
@@ -152,25 +198,72 @@ def process(ctx, input_path, output, format, interactive, collect_unknown,
         invoice-checker process invoice.pdf --threshold 0.25 --validation-mode threshold_based
     """
     try:
+        # Get database manager first to access config
+        db_manager = ctx.get_db_manager()
+        
+        # Load configuration values and apply defaults
+        config_values = _load_config_values(db_manager)
+        
+        # Apply config defaults for unspecified options
+        if format is None:
+            format = config_values.get('default_output_format', 'txt')
+        
+        if interactive is None:
+            # Honor both interactive_discovery and auto_add_discovered_parts config values
+            # If auto_add_discovered_parts is True, disable interactive prompts
+            # If auto_add_discovered_parts is False, use interactive_discovery setting
+            auto_add_parts = config_values.get('auto_add_discovered_parts', False)
+            if auto_add_parts:
+                interactive = False  # Auto-add parts without prompting
+            else:
+                interactive = config_values.get('interactive_discovery', True)  # Use interactive discovery setting
+        
+        if validation_mode is None:
+            validation_mode = config_values.get('validation_mode', 'parts_based')
+        
+        if threshold is None:
+            threshold = Decimal(str(config_values.get('price_tolerance', '0.001')))
+        
         # Get input path if not provided
         if not input_path:
-            input_path = prompt_for_input_path()
+            # Check if there's a configured default location
+            default_location = config_values.get('default_invoice_location', '')
+            if default_location and default_location.strip():
+                # Expand desktop path if needed
+                if default_location.startswith('desktop/'):
+                    from pathlib import Path
+                    desktop_path = Path.home() / 'Desktop'
+                    default_location = str(desktop_path / default_location[8:])  # Remove 'desktop/' prefix
+                
+                # Check if the default location exists
+                default_path = Path(default_location)
+                if default_path.exists():
+                    print_info(f"Using configured default invoice location: {default_location}")
+                    input_path = default_path
+                else:
+                    print_warning(f"Configured default location does not exist: {default_location}")
+                    input_path = prompt_for_input_path()
+            else:
+                input_path = prompt_for_input_path()
         else:
             input_path = Path(input_path)
         
-        # Use documents directory if no output specified
+        # Handle output path with config consideration
         if output is None:
-            output_path = get_documents_directory()
-            print_info(f"Reports will be saved to documents directory: {output_path}")
+            auto_output = config_values.get('auto_output_location', True)
+            if auto_output:
+                # Use the same directory as the input invoices for output
+                output_path = input_path if input_path.is_dir() else input_path.parent
+                print_info(f"Reports will be saved to invoice directory: {output_path}")
+            else:
+                # Prompt user for output location
+                output_path = prompt_for_output_path(default="report." + format)
         else:
             output_path = Path(output)
         
         # Generate session ID if not provided
         if not session_id:
             session_id = str(uuid.uuid4())
-        
-        # Get database manager
-        db_manager = ctx.get_db_manager()
         
         # Process invoices
         results = _process_invoices(
@@ -192,7 +285,7 @@ def process(ctx, input_path, output, format, interactive, collect_unknown,
         # Show enhanced success message
         if output is None:
             print_success("Processing complete!")
-            print_info(f"Reports saved to documents directory: {get_documents_directory()}")
+            print_info(f"Reports saved to: {output_path}")
             if not no_auto_open:
                 print_info("Reports have been automatically opened in your default application.")
         else:
@@ -294,6 +387,44 @@ def interactive(ctx, preset, save_preset):
         raise CLIError(f"Interactive processing failed: {e}")
 
 
+@invoice_group.command(name='quick')
+@click.argument('input_path', type=click.Path(exists=True), required=False)
+@click.option('--no-auto-open', is_flag=True,
+              help='Disable automatic opening of generated reports')
+@pass_context
+def quick_process(ctx, input_path, no_auto_open):
+    """
+    Quick processing with all defaults but discovery enabled.
+    
+    This command processes invoices using all configured defaults:
+    - Uses default invoice location if no input provided
+    - Uses default output format and location
+    - Uses default validation mode
+    - Enables part discovery (but auto-adds new parts without prompting)
+    - Auto-opens reports unless --no-auto-open is specified
+    
+    Perfect for streamlined processing when you want discovery
+    but don't want to answer prompts.
+    
+    Examples:
+        # Quick process with defaults
+        invoice-checker quick
+        
+        # Quick process specific folder
+        invoice-checker quick /path/to/invoices
+        
+        # Quick process without auto-opening reports
+        invoice-checker quick --no-auto-open
+    """
+    try:
+        run_quick_processing(ctx, input_path, not no_auto_open)
+    except UserCancelledError:
+        print_info("Quick processing cancelled by user.")
+    except Exception as e:
+        logger.exception("Quick processing failed")
+        raise CLIError(f"Quick processing failed: {e}")
+
+
 @invoice_group.command(name='collect-unknowns')
 @click.argument('input_path', type=click.Path(exists=True), required=False)
 @click.option('--output', '-o', type=click.Path(), default='unknown_parts.csv',
@@ -348,6 +479,149 @@ def collect_unknowns(ctx, input_path, output, suggest_prices):
         raise CLIError(f"Unknown parts collection failed: {e}")
 
 
+def run_quick_processing(ctx, input_path=None, auto_open=True):
+    """
+    Run quick processing with all defaults but discovery enabled.
+    
+    This function processes invoices using all configured defaults:
+    - Uses default invoice location if no input provided
+    - Uses default output format and location
+    - Uses default validation mode
+    - Enables part discovery with auto-add (no prompting)
+    - Auto-opens reports unless disabled
+    
+    Args:
+        ctx: CLI context
+        input_path: Optional input path, uses default if None
+        auto_open: Whether to auto-open generated reports
+    """
+    try:
+        # Get database manager and load config values
+        db_manager = ctx.get_db_manager()
+        config_values = _load_config_values(db_manager)
+        
+        print_info("🚀 Quick Processing Mode")
+        print_info("Using all defaults with automatic part discovery enabled")
+        print()
+        
+        # Get input path - use default if not provided
+        if not input_path:
+            # Check if there's a configured default location
+            default_location = config_values.get('default_invoice_location', '')
+            if default_location and default_location.strip():
+                # Expand desktop path if needed
+                if default_location.startswith('desktop/'):
+                    from pathlib import Path
+                    desktop_path = Path.home() / 'Desktop'
+                    default_location = str(desktop_path / default_location[8:])  # Remove 'desktop/' prefix
+                
+                # Check if the default location exists
+                default_path = Path(default_location)
+                if default_path.exists():
+                    print_info(f"📁 Using configured invoice location: {default_location}")
+                    input_path = default_path
+                else:
+                    print_error(f"Configured default location does not exist: {default_location}")
+                    print_info("Please configure a valid default location or specify an input path.")
+                    raise CLIError(f"Default invoice location not found: {default_location}")
+            else:
+                print_error("No default invoice location configured and no input path provided.")
+                print_info("Use 'invoice-checker config set default_invoice_location /path/to/invoices' to set a default.")
+                raise CLIError("No input path available for quick processing")
+        else:
+            input_path = Path(input_path)
+            print_info(f"📁 Processing invoices from: {input_path}")
+        
+        # Validate input folder has PDF files
+        if input_path.is_dir():
+            pdf_files = list(input_path.glob("*.pdf"))
+            if not pdf_files:
+                print_warning(f"No PDF files found in {input_path}")
+                raise CLIError(f"No PDF files found in {input_path}")
+            else:
+                print_info(f"📄 Found {len(pdf_files)} PDF files")
+        elif input_path.is_file():
+            if input_path.suffix.lower() != '.pdf':
+                raise CLIError(f"File is not a PDF: {input_path}")
+            print_info(f"📄 Processing single PDF file: {input_path.name}")
+        else:
+            raise CLIError(f"Input path does not exist: {input_path}")
+        
+        # Use all defaults from config
+        output_format = config_values.get('default_output_format', 'txt')
+        validation_mode = config_values.get('validation_mode', 'parts_based')
+        threshold = Decimal(str(config_values.get('price_tolerance', '0.001')))
+        
+        # Handle output path based on config
+        auto_output = config_values.get('auto_output_location', True)
+        if auto_output:
+            # Use the same directory as the input invoices for output
+            output_path = input_path if input_path.is_dir() else input_path.parent
+            print_info(f"💾 Reports will be saved to: {output_path}")
+        else:
+            # Use documents directory as fallback
+            from processing.report_utils import get_documents_directory
+            output_path = get_documents_directory()
+            print_info(f"💾 Reports will be saved to: {output_path}")
+        
+        print_info(f"📊 Output format: {output_format}")
+        print_info(f"🔍 Validation mode: {validation_mode}")
+        print_info(f"🔧 Part discovery: enabled (auto-add new parts)")
+        print()
+        
+        # Process invoices with auto-add discovery (no user prompts)
+        session_id = str(uuid.uuid4())
+        
+        print_info("⚡ Processing invoices...")
+        
+        results = _process_invoices(
+            input_path=input_path,
+            output_path=output_path,
+            output_format=output_format,
+            validation_mode=validation_mode,
+            threshold=threshold,
+            interactive=False,  # No interactive prompts - auto-add discovered parts
+            collect_unknown=False,
+            session_id=session_id,
+            db_manager=db_manager,
+            auto_open=auto_open
+        )
+        
+        # Show results
+        print()
+        print_success("✅ Quick processing complete!")
+        
+        # Display summary
+        files_processed = results.get('files_processed', 0)
+        files_failed = results.get('files_failed', 0)
+        anomalies_found = results.get('anomalies_found', 0)
+        unknown_parts = results.get('unknown_parts', 0)
+        
+        print_info(f"📊 Summary:")
+        print_info(f"   • Files processed: {files_processed}")
+        if files_failed > 0:
+            print_warning(f"   • Files failed: {files_failed}")
+        print_info(f"   • Anomalies found: {anomalies_found}")
+        if unknown_parts > 0:
+            print_info(f"   • New parts discovered: {unknown_parts} (automatically added to database)")
+        
+        print_info(f"📁 Reports saved to: {output_path}")
+        if auto_open:
+            print_info("🔗 Reports have been automatically opened")
+        
+        # Show discovered parts summary if any
+        if unknown_parts > 0:
+            print()
+            print_info("🆕 New parts were automatically added to your database for future processing.")
+            print_info("You can review them using: invoice-checker parts list --recent")
+        
+    except UserCancelledError:
+        raise
+    except Exception as e:
+        print_error(f"Quick processing failed: {e}")
+        raise
+
+
 def run_interactive_processing(ctx, preset=None, save_preset=None):
     """
     Run the interactive processing workflow.
@@ -358,9 +632,35 @@ def run_interactive_processing(ctx, preset=None, save_preset=None):
     show_welcome_message()
     
     try:
+        # Get database manager and load config values
+        db_manager = ctx.get_db_manager()
+        config_values = _load_config_values(db_manager)
+        
         # Step 1: Get input folder
         print_info("Step 1: Select invoice folder")
-        input_path = prompt_for_input_path()
+        
+        # Check if there's a configured default location
+        default_location = config_values.get('default_invoice_location', '')
+        if default_location and default_location.strip():
+            # Expand desktop path if needed
+            if default_location.startswith('desktop/'):
+                from pathlib import Path
+                desktop_path = Path.home() / 'Desktop'
+                default_location = str(desktop_path / default_location[8:])  # Remove 'desktop/' prefix
+            
+            # Check if the default location exists
+            default_path = Path(default_location)
+            if default_path.exists():
+                print_info(f"Default invoice location configured: {default_location}")
+                if click.confirm(f"Use configured default location: {default_location}?", default=True):
+                    input_path = default_path
+                else:
+                    input_path = prompt_for_input_path()
+            else:
+                print_warning(f"Configured default location does not exist: {default_location}")
+                input_path = prompt_for_input_path()
+        else:
+            input_path = prompt_for_input_path()
         
         # Check if single file mode was requested
         from cli.prompts import PathWithMetadata
@@ -382,29 +682,59 @@ def run_interactive_processing(ctx, preset=None, save_preset=None):
         
         # Step 2: Get output settings
         print_info("Step 2: Configure output")
-        output_format = prompt_for_output_format()
-        default_output = f"report.{output_format}"
-        output_path = prompt_for_output_path(default=default_output)
+        
+        # Use configured default format
+        default_format = config_values.get('default_output_format', 'txt')
+        print_info(f"Default output format from config: {default_format}")
+        
+        if click.confirm(f"Use configured default format ({default_format})?", default=True):
+            output_format = default_format
+        else:
+            output_format = prompt_for_output_format()
+        
+        # Handle output path based on config
+        auto_output = config_values.get('auto_output_location', True)
+        if auto_output:
+            # Use the same directory as the input invoices for output
+            output_path = input_path if input_path.is_dir() else input_path.parent
+            print_info(f"Using automatic output location: {output_path}")
+        else:
+            default_output = f"report.{output_format}"
+            output_path = prompt_for_output_path(default=default_output)
         
         # Step 3: Select validation mode
         print_info("Step 3: Select validation mode")
-        validation_mode = prompt_for_validation_mode()
+        
+        # Use configured default validation mode
+        default_validation_mode = config_values.get('validation_mode', 'parts_based')
+        print_info(f"Default validation mode from config: {default_validation_mode}")
+        
+        if click.confirm(f"Use configured validation mode ({default_validation_mode})?", default=True):
+            validation_mode = default_validation_mode
+        else:
+            validation_mode = prompt_for_validation_mode()
         
         threshold = None
         if validation_mode == 'threshold_based':
-            threshold = prompt_for_threshold()
+            # Use configured price tolerance as default threshold
+            default_threshold = Decimal(str(config_values.get('price_tolerance', '0.001')))
+            threshold = prompt_for_threshold(default=default_threshold)
         
         # Step 4: Configure discovery options
         print_info("Step 4: Configure part discovery")
+        
+        # Use configured default for interactive discovery
+        default_interactive = config_values.get('interactive_discovery', True)
+        print_info(f"Default interactive discovery from config: {default_interactive}")
+        
         interactive_discovery = click.confirm(
-            "Enable interactive part discovery?", default=True
+            "Enable interactive part discovery?", default=default_interactive
         )
         
         # Step 5: Process invoices
         print_info("Step 5: Processing invoices...")
         
         session_id = str(uuid.uuid4())
-        db_manager = ctx.get_db_manager()
         
         # Pass the specific files to process if in single file mode
         if single_file_mode and original_file:
@@ -424,7 +754,7 @@ def run_interactive_processing(ctx, preset=None, save_preset=None):
             output_path=output_path,
             output_format=output_format,
             validation_mode=validation_mode,
-            threshold=threshold or Decimal('0.30'),
+            threshold=threshold or Decimal(str(config_values.get('price_tolerance', '0.001'))),
             interactive=interactive_discovery,
             collect_unknown=False,
             session_id=session_id,
@@ -568,14 +898,17 @@ def _process_invoices(input_path: Path, output_path: Path, output_format: str,
         # Determine if single file or directory processing
         if input_path.is_file():
             # Single file processing
-            result = processor.process_single_invoice(input_path, output_path.parent)
+            result = processor.process_single_invoice(input_path, output_path if output_path.is_dir() else output_path.parent)
             
             if result.success and result.validation_json:
-                # Generate report in requested format
+                # Generate report in requested format with proper parameters
                 reports = processor.generate_reports(
                     result.validation_json,
                     output_path.parent,
-                    output_path.stem
+                    output_path.stem,
+                    auto_open=auto_open,
+                    preferred_format=output_format,
+                    generate_all_formats=True  # Generate all formats for compatibility
                 )
                 
                 # Return legacy format results
@@ -606,7 +939,7 @@ def _process_invoices(input_path: Path, output_path: Path, output_format: str,
                 }
         else:
             # Directory processing
-            batch_result = processor.process_directory(input_path, output_path.parent)
+            batch_result = processor.process_directory(input_path, output_path)
             
             # Return legacy format results
             return {
@@ -678,14 +1011,21 @@ def _process_batch(folders: List[Path], output_dir: Path, parallel: bool,
             logger.info(f"Processing folder: {folder_path}")
             print_info(f"Processing folder: {folder_path.name}")
             
-            # Use existing _process_invoices function
+            # Load config values for batch processing
+            config_values = _load_config_values(db_manager)
+            
+            # Use existing _process_invoices function with config defaults
+            # Honor auto_add_discovered_parts config - if False, enable interactive discovery
+            auto_add_parts = config_values.get('auto_add_discovered_parts', False)
+            interactive_discovery = not auto_add_parts  # Interactive when auto_add is False
+            
             result = _process_invoices(
                 input_path=folder_path,
                 output_path=output_file,
-                output_format='csv',
-                validation_mode='parts_based',
-                threshold=Decimal('0.30'),
-                interactive=False,
+                output_format=config_values.get('default_output_format', 'csv'),
+                validation_mode=config_values.get('validation_mode', 'parts_based'),
+                threshold=Decimal(str(config_values.get('price_tolerance', '0.001'))),
+                interactive=interactive_discovery,  # Enable user feedback for new parts
                 collect_unknown=False,
                 session_id=session_id,
                 db_manager=db_manager

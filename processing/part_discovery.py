@@ -68,22 +68,47 @@ class SimplePartDiscoveryService:
     def _find_unknown_parts(self, extraction_json: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Find parts that don't exist in the database."""
         unknown_parts = []
+        seen_composite_keys = set()  # Track parts we've already processed
         parts = extraction_json.get('parts', [])
         
         for part_data in parts:
-            part_number = part_data.get('database_fields', {}).get('part_number')
+            db_fields = part_data.get('database_fields', {})
+            part_number = db_fields.get('part_number')
             if not part_number:
                 continue
             
-            # Check if part exists in database
-            try:
-                existing_part = self.db_manager.get_part(part_number)
-                # Part exists, skip it completely (don't update rates)
-                self.logger.debug(f"Part {part_number} already exists in database, skipping")
+            # Get all components for composite key check (excluding price)
+            item_type = db_fields.get('item_type')
+            description = db_fields.get('description')
+            
+            # Generate composite key for this part (item_type|description|part_number)
+            from database.models import Part
+            composite_key = Part.generate_identifier_from_components(item_type, description, part_number)
+            
+            # Skip if we've already processed this exact composite key in this session
+            if composite_key in seen_composite_keys:
+                self.logger.debug(f"Duplicate part {part_number} (composite: {composite_key}) already processed in this session, skipping")
                 continue
-            except Exception:
-                # Part doesn't exist, add to unknown list
-                unknown_parts.append(part_data)
+            
+            # Check if part exists in database using composite key components
+            try:
+                existing_part = self.db_manager.find_part_by_components(item_type, description, part_number)
+                if existing_part:
+                    # Part exists in database, skip it completely
+                    self.logger.debug(f"Part {part_number} (composite: {existing_part.composite_key}) already exists in database, skipping")
+                    seen_composite_keys.add(composite_key)  # Mark as seen to avoid duplicates
+                    continue
+                else:
+                    # Part doesn't exist in database, add to unknown list
+                    self.logger.debug(f"Part {part_number} (composite: {composite_key}) is unknown, adding to discovery list")
+                    unknown_parts.append(part_data)
+                    seen_composite_keys.add(composite_key)  # Mark as seen to avoid duplicates
+            except Exception as e:
+                # If there's an error checking, assume part doesn't exist and add to unknown list
+                self.logger.debug(f"Error checking part {part_number}: {e}, treating as unknown")
+                if composite_key not in seen_composite_keys:
+                    unknown_parts.append(part_data)
+                    seen_composite_keys.add(composite_key)
         
         return unknown_parts
     
@@ -108,17 +133,54 @@ class SimplePartDiscoveryService:
             print(f"Line: {line_fields.get('raw_text', 'N/A')}")
             
             while True:
-                choice = input("\n[A]dd to database, [S]kip this part, [Q]uit discovery: ").strip().upper()
+                choice = input("\n[A]dd to database, [P]art details, [C]hange rate, [S]kip this part, [Q]uit discovery: ").strip().upper()
                 
                 if choice == 'A':
+                    # Add part directly to database without confirmation
+                    try:
+                        part = Part(
+                            part_number=part_number,
+                            authorized_price=Decimal(str(discovered_price)),
+                            description=description,
+                            item_type=db_fields.get('item_type'),
+                            category=db_fields.get('category'),
+                            source='discovered',
+                            first_seen_invoice=db_fields.get('first_seen_invoice'),
+                            notes=db_fields.get('notes')
+                        )
+                        
+                        self.db_manager.create_part(part)
+                        print(f"✅ Added {part_number} to database with price ${discovered_price}")
+                        
+                        results.append({
+                            'part_number': part_number,
+                            'action': 'added',
+                            'verified_price': float(discovered_price),
+                            'original_price': float(discovered_price)
+                        })
+                        break
+                        
+                    except Exception as e:
+                        print(f"❌ Failed to add {part_number}: {e}")
+                        results.append({
+                            'part_number': part_number,
+                            'action': 'failed',
+                            'error': str(e)
+                        })
+                        break
+                
+                elif choice == 'P':
+                    # Adjust part details (number, price, etc.)
+                    print("Adjust part details:")
+                    
                     # Verify part number
-                    verified_part_number = input(f"Confirm part number [{part_number}]: ").strip()
+                    verified_part_number = input(f"Part number [{part_number}]: ").strip()
                     if not verified_part_number:
                         verified_part_number = part_number
                     
                     # Verify price
                     while True:
-                        price_input = input(f"Confirm authorized price [${discovered_price}]: ").strip()
+                        price_input = input(f"Authorized price [${discovered_price}]: ").strip()
                         if not price_input:
                             verified_price = Decimal(str(discovered_price))
                             break
@@ -135,38 +197,38 @@ class SimplePartDiscoveryService:
                                 print("❌ Invalid price format. Please enter a valid number (e.g., 15.50)")
                                 continue
                     
-                    # Add part to database
-                    try:
-                        part = Part(
-                            part_number=verified_part_number,
-                            authorized_price=verified_price,
-                            description=description,
-                            item_type=db_fields.get('item_type'),
-                            category=db_fields.get('category'),
-                            source='discovered',
-                            first_seen_invoice=db_fields.get('first_seen_invoice'),
-                            notes=db_fields.get('notes')
-                        )
-                        
-                        self.db_manager.create_part(part)
-                        print(f"✅ Added {verified_part_number} to database with price ${verified_price}")
-                        
-                        results.append({
-                            'part_number': verified_part_number,
-                            'action': 'added',
-                            'verified_price': float(verified_price),
-                            'original_price': float(discovered_price)
-                        })
-                        break
-                        
-                    except Exception as e:
-                        print(f"❌ Failed to add {verified_part_number}: {e}")
-                        results.append({
-                            'part_number': verified_part_number,
-                            'action': 'failed',
-                            'error': str(e)
-                        })
-                        break
+                    # Update the current part data
+                    part_number = verified_part_number
+                    discovered_price = float(verified_price)
+                    print(f"✅ Part details updated: {part_number} @ ${discovered_price}")
+                    
+                    # Continue the loop to show updated options
+                    continue
+                
+                elif choice == 'C':
+                    # Change rate option
+                    print(f"Current discovered price: ${discovered_price}")
+                    while True:
+                        new_price_input = input("Enter new authorized price: $").strip()
+                        try:
+                            # Remove $ if present
+                            new_price_input = new_price_input.replace('$', '').strip()
+                            new_price = Decimal(new_price_input)
+                            if new_price < 0:
+                                print("❌ Price cannot be negative. Please try again.")
+                                continue
+                            
+                            # Update the discovered price for this part
+                            discovered_price = float(new_price)
+                            print(f"✅ Price updated to ${new_price}")
+                            break
+                            
+                        except Exception:
+                            print("❌ Invalid price format. Please enter a valid number (e.g., 15.50)")
+                            continue
+                    
+                    # Continue the loop to show updated options
+                    continue
                 
                 elif choice == 'S':
                     print(f"⏭️  Skipped {part_number}")
@@ -185,7 +247,7 @@ class SimplePartDiscoveryService:
                     return results
                 
                 else:
-                    print("Invalid choice. Please enter A, S, or Q.")
+                    print("Invalid choice. Please enter A, P, C, S, or Q.")
         
         return results
     

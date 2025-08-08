@@ -56,7 +56,7 @@ cls
 call :show_banner
 call :show_main_menu
 
-set /p "choice=Select option (1-5): "
+set /p "choice=Select option (1-6): "
 
 if "%choice%"=="1" (
     call :launch_interactive_app
@@ -64,11 +64,16 @@ if "%choice%"=="1" (
     goto main_loop
 )
 if "%choice%"=="2" (
-    call :setup_workflow
+    call :launch_quick_process
     pause
     goto main_loop
 )
 if "%choice%"=="3" (
+    call :setup_workflow
+    pause
+    goto main_loop
+)
+if "%choice%"=="4" (
     REM Configuration management (interactive setup wizard)
     if exist "%PROJECT_DIR%" (
         cd /d "%PROJECT_DIR%"
@@ -80,17 +85,17 @@ if "%choice%"=="3" (
     pause
     goto main_loop
 )
-if "%choice%"=="4" (
+if "%choice%"=="5" (
     call :show_help
     goto main_loop
 )
-if "%choice%"=="5" (
+if "%choice%"=="6" (
     echo %INFO_PREFIX% Thank you for using Invoice Rate Detection System!
     pause
     exit /b 0
 )
 
-echo %ERROR_PREFIX% Invalid option. Please select 1-5.
+echo %ERROR_PREFIX% Invalid option. Please select 1-6.
 pause
 goto main_loop
 
@@ -144,13 +149,14 @@ echo ║                                     MAIN MENU                          
 echo ╚═══════════════════════════════════════════════════════════════════════════════════╝
 echo.
 echo 1) Launch Application  - Start the interactive Invoice Rate Detection System
-echo 2) Setup               - Install, update, and configure system
-echo 3) Configuration       - Setup and manage system options
-echo 4) Help                - Show help and documentation
-echo 5) Exit                - Exit the launcher
+echo 2) Quick Process       - Process invoices with defaults (discovery enabled)
+echo 3) Setup               - Install, update, and configure system
+echo 4) Configuration       - Setup and manage system options
+echo 5) Help                - Show help and documentation
+echo 6) Exit                - Exit the launcher
 echo.
-echo Note: All invoice processing, parts management, and database operations
-echo are available through the interactive application (option 1).
+echo Note: Quick Process uses all configured defaults but still discovers new parts.
+echo Use Launch Application for full interactive control.
 echo.
 goto :eof
 
@@ -316,6 +322,23 @@ uv run invoice-checker
 
 cd ..
 echo %SUCCESS_PREFIX% Application session completed
+goto :eof
+
+:launch_quick_process
+echo %INFO_PREFIX% Starting Quick Process Mode...
+
+cd "%PROJECT_DIR%"
+
+REM Check system status first
+echo %INFO_PREFIX% Checking system status...
+uv run invoice-checker status
+
+REM Launch quick processing with defaults
+echo %INFO_PREFIX% Running quick processing with all defaults...
+uv run invoice-checker quick
+
+cd ..
+echo %SUCCESS_PREFIX% Quick processing completed
 goto :eof
 
 :setup_workflow

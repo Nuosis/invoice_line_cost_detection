@@ -413,46 +413,66 @@ class InvoiceProcessor:
                         validation_json: Dict[str, Any],
                         output_dir: Optional[Path] = None,
                         base_name: str = "validation_report",
-                        auto_open: bool = True) -> Dict[str, Path]:
+                        auto_open: bool = True,
+                        preferred_format: str = "csv",
+                        generate_all_formats: bool = True) -> Dict[str, Path]:
         """
         Generate validation reports in multiple formats.
         
         Args:
             validation_json: Validation results to generate reports from
-            output_dir: Directory to save reports (defaults to documents/ directory)
+            output_dir: Directory to save reports (MUST be provided - no default fallback)
             base_name: Base name for report files
             auto_open: Whether to automatically open the generated reports
+            preferred_format: Preferred format for auto-opening (default: "csv")
+            generate_all_formats: Whether to generate all formats or just the preferred one
             
         Returns:
             Dictionary mapping format to output file path
         """
-        # Use documents directory if no output directory specified
+        # CRITICAL: Use the provided output_dir, don't fallback to documents directory
+        # This ensures files go to the user's selected location
         if output_dir is None:
-            output_dir = get_documents_directory()
+            # This should not happen in normal operation - CLI should always provide path
+            self.logger.warning("No output directory provided, using current working directory")
+            output_dir = Path.cwd()
         else:
             output_dir = Path(output_dir)
         
+        # Ensure the output directory exists
         output_dir.mkdir(parents=True, exist_ok=True)
+        self.logger.info(f"Using output directory: {output_dir}")
         
-        # Generate all report formats with auto-open functionality
+        # Generate reports with new parameters - PASS THE EXACT PATH
         reports = self.report_generator.generate_reports(
             validation_json,
-            output_base_path=str(output_dir),
-            auto_open=auto_open
+            output_base_path=str(output_dir),  # This is the user's selected path
+            auto_open=auto_open,
+            preferred_format=preferred_format,
+            generate_all_formats=generate_all_formats
         )
         
         # The report generator now handles file writing and auto-opening
-        # Return the file paths for compatibility
-        invoice_num = validation_json.get('invoice_metadata', {}).get('invoice_number', 'unknown')
+        # Return the actual file paths from the report generator
+        invoice_num = validation_json.get('invoice_metadata', {}).get('invoice_number')
+        if not invoice_num or invoice_num.lower() == 'unknown':
+            base_name = "report"
+        else:
+            base_name = invoice_num
+            
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        date_folder = datetime.now().strftime('%Y%m%d')
         
-        output_files = {
-            'json': output_dir / f"{invoice_num}_validation_{timestamp}.json",
-            'txt': output_dir / f"{invoice_num}_report_{timestamp}.txt",
-            'csv': output_dir / f"{invoice_num}_analysis_{timestamp}.csv"
-        }
+        # Build paths that match the report generator's structure
+        output_files = {}
+        if generate_all_formats or preferred_format == 'json':
+            output_files['json'] = output_dir / date_folder / f"{base_name}_validation_{timestamp}.json"
+        if generate_all_formats or preferred_format == 'txt':
+            output_files['txt'] = output_dir / date_folder / f"{base_name}_report_{timestamp}.txt"
+        if generate_all_formats or preferred_format == 'csv':
+            output_files['csv'] = output_dir / date_folder / f"{base_name}_analysis_{timestamp}.csv"
         
-        self.logger.info(f"Generated reports in documents directory: {output_dir}")
+        self.logger.info(f"Generated reports in directory: {output_dir / date_folder}")
         return output_files
     
     def _extract_invoice_data(self, pdf_path: Path) -> Dict[str, Any]:
