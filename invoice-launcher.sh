@@ -67,9 +67,10 @@ show_banner() {
 ║               ╚═════╝ ╚══════╝   ╚═╝   ╚══════╝ ╚═════╝   ╚═╝    ╚═════╝ ╚═╝  ╚═╝ ║
 ║                                                                                   ║
 ║                          Advanced Invoice Rate Detection                          ║
-║                                   Version ${app_version}                          ║
 ║                         marcus@claritybusinesssolutions.ca                        ║
 ╚═══════════════════════════════════════════════════════════════════════════════════╝
+                                Version ${app_version}
+
 EOF
     echo -e "${NC}"
 }
@@ -132,8 +133,39 @@ check_requirements() {
     
     # Check Git
     if ! command_exists git; then
-        log_error "Git is required but not installed. Please install Git."
-        exit 1
+        log_warning "Git not found. Installing Git..."
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            # macOS - install via Homebrew or Xcode Command Line Tools
+            if command_exists brew; then
+                brew install git
+            else
+                log_info "Installing Xcode Command Line Tools (includes Git)..."
+                xcode-select --install
+            fi
+        elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+            # Linux - try common package managers
+            if command_exists apt-get; then
+                sudo apt-get update && sudo apt-get install -y git
+            elif command_exists yum; then
+                sudo yum install -y git
+            elif command_exists dnf; then
+                sudo dnf install -y git
+            elif command_exists pacman; then
+                sudo pacman -S git
+            else
+                log_error "Could not install Git automatically. Please install Git manually."
+                exit 1
+            fi
+        else
+            log_error "Could not install Git automatically on this platform. Please install Git manually."
+            exit 1
+        fi
+        
+        if ! command_exists git; then
+            log_error "Git installation failed. Please install Git manually."
+            exit 1
+        fi
+        log_success "Git installed successfully"
     fi
     
     log_success "All requirements satisfied"
@@ -386,9 +418,9 @@ run_backup() {
     fi
 }
 
-# Process invoices workflow
-process_invoices() {
-    log_info "Starting invoice processing workflow..."
+# Launch interactive application
+launch_interactive_app() {
+    log_info "Launching Invoice Rate Detection System..."
     
     cd "$PROJECT_DIR"
     
@@ -396,132 +428,12 @@ process_invoices() {
     log_info "Checking system status..."
     uv run invoice-checker status
     
-    # Interactive mode with discovery
-    log_info "Starting interactive processing with discovery..."
-    
-    # Run interactive processing (this handles discovery automatically)
-    uv run invoice-checker invoice interactive
-    
-    # Run backup if database changed
-    run_backup
+    # Launch the Python interactive mode (this handles all application operations)
+    log_info "Starting interactive application..."
+    uv run invoice-checker
     
     cd ..
-    log_success "Invoice processing completed"
-}
-
-# Manage parts workflow
-manage_parts() {
-    log_info "Starting parts management..."
-    
-    cd "$PROJECT_DIR"
-    
-    echo -e "${CYAN}Parts Management Options:${NC}"
-    echo "1) List all parts"
-    echo "2) Add new part"
-    echo "3) Update existing part"
-    echo "4) Import parts from CSV"
-    echo "5) Export parts to CSV"
-    echo "6) Parts statistics"
-    echo "7) Return to main menu"
-    
-    read -p "Select option (1-7): " parts_choice
-    
-    case $parts_choice in
-        1)
-            uv run invoice-checker parts list
-            ;;
-        2)
-            echo "Adding new part..."
-            read -p "Enter part number: " part_num
-            read -p "Enter authorized price: " part_price
-            read -p "Enter description (optional): " part_desc
-            read -p "Enter category (optional): " part_cat
-            
-            cmd="uv run invoice-checker parts add $part_num $part_price"
-            [[ -n "$part_desc" ]] && cmd="$cmd --description \"$part_desc\""
-            [[ -n "$part_cat" ]] && cmd="$cmd --category \"$part_cat\""
-            
-            eval $cmd
-            ;;
-        3)
-            uv run invoice-checker parts list
-            read -p "Enter part number to update: " part_num
-            read -p "Enter new price (or press enter to skip): " new_price
-            
-            cmd="uv run invoice-checker parts update $part_num"
-            [[ -n "$new_price" ]] && cmd="$cmd --price $new_price"
-            
-            eval $cmd
-            ;;
-        4)
-            read -p "Enter CSV file path: " csv_file
-            uv run invoice-checker parts import "$csv_file"
-            ;;
-        5)
-            read -p "Enter output CSV file path: " output_file
-            uv run invoice-checker parts export "$output_file"
-            ;;
-        6)
-            uv run invoice-checker parts stats
-            ;;
-        7)
-            cd ..
-            return
-            ;;
-        *)
-            log_error "Invalid option"
-            ;;
-    esac
-    
-    cd ..
-}
-
-# Manage database workflow
-manage_database() {
-    log_info "Starting database management..."
-    
-    cd "$PROJECT_DIR"
-    
-    echo -e "${CYAN}Database Management Options:${NC}"
-    echo "1) Create backup"
-    echo "2) Restore from backup"
-    echo "3) Database maintenance"
-    echo "4) Database migration"
-    echo "5) View backup history"
-    echo "6) Return to main menu"
-    
-    read -p "Select option (1-6): " db_choice
-    
-    case $db_choice in
-        1)
-            uv run invoice-checker database backup
-            ;;
-        2)
-            echo "Available backups:"
-            ls -la "$BACKUP_DIR"/*.db 2>/dev/null || echo "No backups found"
-            read -p "Enter backup file path: " backup_file
-            uv run invoice-checker database restore "$backup_file"
-            ;;
-        3)
-            uv run invoice-checker database maintenance
-            ;;
-        4)
-            uv run invoice-checker database migrate
-            ;;
-        5)
-            echo "Backup history:"
-            ls -la "$BACKUP_DIR"/ 2>/dev/null || echo "No backups found"
-            ;;
-        6)
-            cd ..
-            return
-            ;;
-        *)
-            log_error "Invalid option"
-            ;;
-    esac
-    
-    cd ..
+    log_success "Application session completed"
 }
 
 # Setup workflow
@@ -594,8 +506,8 @@ show_help() {
     
     echo -e "${GREEN}GETTING STARTED${NC}"
     echo "1. First time users should run 'Setup' to install and configure the system"
-    echo "2. Add parts to your database using 'Manage Parts'"
-    echo "3. Process invoices using 'Process Invoices' for interactive analysis"
+    echo "2. Launch the application to access all features interactively"
+    echo "3. Use the application's main menu to manage parts and process invoices"
     echo "4. Review generated reports in CSV format (can be opened in Excel)"
     echo ""
     
@@ -639,12 +551,13 @@ show_main_menu() {
     echo -e "${CYAN}║                                   MAIN MENU                                     ║${NC}"
     echo -e "${CYAN}╚═════════════════════════════════════════════════════════════════════════════════╝${NC}"
     echo ""
-    echo -e "${GREEN}1)${NC} Process Invoices    - Run interactive invoice processing with discovery"
-    echo -e "${GREEN}2)${NC} Manage Parts        - Add, update, import/export parts database"
-    echo -e "${GREEN}3)${NC} Manage Database     - Backup, restore, and maintain database"
-    echo -e "${GREEN}4)${NC} Setup               - Install, update, and configure system"
-    echo -e "${GREEN}5)${NC} Help                - Show help and documentation"
-    echo -e "${GREEN}6)${NC} Exit                - Exit the application"
+    echo -e "${GREEN}1)${NC} Launch Application  - Start the interactive Invoice Rate Detection System"
+    echo -e "${GREEN}2)${NC} Setup               - Install, update, and configure system"
+    echo -e "${GREEN}3)${NC} Help                - Show help and documentation"
+    echo -e "${GREEN}4)${NC} Exit                - Exit the launcher"
+    echo ""
+    echo -e "${YELLOW}Note: All invoice processing, parts management, and database operations"
+    echo -e "are available through the interactive application (option 1).${NC}"
     echo ""
 }
 
@@ -698,37 +611,29 @@ main() {
         show_banner
         show_main_menu
         
-        read -p "Select option (1-6): " choice
+        read -p "Select option (1-4): " choice
         
         case $choice in
             1)
-                process_invoices
+                launch_interactive_app
                 read -p "Press Enter to continue..."
                 ;;
             2)
-                manage_parts
-                read -p "Press Enter to continue..."
-                ;;
-            3)
-                manage_database
-                read -p "Press Enter to continue..."
-                ;;
-            4)
                 setup_workflow
                 # Check if user selected "Return to main menu" (exit code 5)
                 if [[ $? -ne 5 ]]; then
                     read -p "Press Enter to continue..."
                 fi
                 ;;
-            5)
+            3)
                 show_help
                 ;;
-            6)
+            4)
                 log_info "Thank you for using Invoice Rate Detection System!"
                 exit 0
                 ;;
             *)
-                log_error "Invalid option. Please select 1-6."
+                log_error "Invalid option. Please select 1-4."
                 read -p "Press Enter to continue..."
                 ;;
         esac

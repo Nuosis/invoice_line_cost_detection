@@ -7,6 +7,84 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.17] - 2025-08-08
+
+### Changes
+
+Modified files:
+  - Modified: invoice-launcher.bat
+  - Modified: invoice-launcher.sh
+  - Modified: invoice-rate-detection-1.0.15/.deployed
+  - Modified: invoice-rate-detection-1.0.15/.deployment_info
+  - Modified: invoice-rate-detection-1.0.15/.version
+  - Modified: invoice-rate-detection-1.0.15/BULK_OPERATIONS_GUIDE.md
+  - Modified: invoice-rate-detection-1.0.15/CHANGELOG.md
+  - Modified: invoice-rate-detection-1.0.15/Clarity Invoice Validator.bat
+  - Modified: invoice-rate-detection-1.0.15/Clarity Invoice Validator.command
+  - Modified: invoice-rate-detection-1.0.15/ERROR_HANDLING_GUIDE.md
+  - Modified: invoice-rate-detection-1.0.15/INTERACTIVE_PART_DISCOVERY.md
+  - Modified: invoice-rate-detection-1.0.15/README.md
+  - Modified: invoice-rate-detection-1.0.15/REFACTOR.md
+  - Modified: invoice-rate-detection-1.0.15/REFACTOR_TODO.md
+  - Modified: invoice-rate-detection-1.0.15/TASKS.md
+  - Modified: invoice-rate-detection-1.0.15/USER_FLOWS.md
+  - Modified: invoice-rate-detection-1.0.15/USER_MANUAL.md
+  - Modified: invoice-rate-detection-1.0.15/Uninstaller.command
+  - Modified: invoice-rate-detection-1.0.15/__init__.py
+  - Modified: invoice-rate-detection-1.0.15/commands/__init__.py
+  - Modified: invoice-rate-detection-1.0.15/commands/bulk_operations.py
+  - Modified: invoice-rate-detection-1.0.15/commands/config_commands.py
+  - Modified: invoice-rate-detection-1.0.15/commands/database_commands.py
+  - Modified: invoice-rate-detection-1.0.15/commands/discovery_commands.py
+  - Modified: invoice-rate-detection-1.0.15/commands/invoice_commands.py
+  - Modified: invoice-rate-detection-1.0.15/commands/parts_commands.py
+  - Modified: invoice-rate-detection-1.0.15/commands/utils_commands.py
+  - Modified: invoice-rate-detection-1.0.15/context.py
+  - Modified: invoice-rate-detection-1.0.15/database.py
+  - Modified: invoice-rate-detection-1.0.15/db_migration.py
+  - Modified: invoice-rate-detection-1.0.15/db_utils.py
+  - Modified: invoice-rate-detection-1.0.15/deploy.sh
+  - Modified: invoice-rate-detection-1.0.15/design/cli_command_structure_design.md
+  - Modified: invoice-rate-detection-1.0.15/design/database_schema_design.md
+  - Modified: invoice-rate-detection-1.0.15/design/report_format_specification.md
+  - Modified: invoice-rate-detection-1.0.15/design/validation_logic_specification.md
+  - Modified: invoice-rate-detection-1.0.15/error_handlers.py
+  - Modified: invoice-rate-detection-1.0.15/error_solving/error_solving_prompt.md
+  - Modified: invoice-rate-detection-1.0.15/error_solving/error_solving_template.md
+  - Modified: invoice-rate-detection-1.0.15/error_solving/validation_engine_data_quality_error.md
+  - Modified: invoice-rate-detection-1.0.15/exceptions.py
+  - Modified: invoice-rate-detection-1.0.15/formatters.py
+  - Modified: invoice-rate-detection-1.0.15/invoice-launcher.bat
+  - Modified: invoice-rate-detection-1.0.15/invoice-launcher.sh
+  - Modified: invoice-rate-detection-1.0.15/invoice_processor.py
+  - Modified: invoice-rate-detection-1.0.15/invoices/5790265775.pdf
+  - Modified: invoice-rate-detection-1.0.15/invoices/5790265776.pdf
+  - Modified: invoice-rate-detection-1.0.15/invoices/5790265781.pdf
+  - Modified: invoice-rate-detection-1.0.15/invoices/5790265785.pdf
+  - Modified: invoice-rate-detection-1.0.15/invoices/5790265786.pdf
+  - Modified: invoice-rate-detection-1.0.15/main.py
+  - Modified: invoice-rate-detection-1.0.15/models.py
+  - Modified: invoice-rate-detection-1.0.15/part_discovery.py
+  - Modified: invoice-rate-detection-1.0.15/pdf_processor.py
+  - Modified: invoice-rate-detection-1.0.15/progress.py
+  - Modified: invoice-rate-detection-1.0.15/project/SCOPE.md
+  - Modified: invoice-rate-detection-1.0.15/project/SOW.md
+  - Modified: invoice-rate-detection-1.0.15/project/SOW.pdf
+  - Modified: invoice-rate-detection-1.0.15/project/Safety_Supply_Proposal.pdf
+  - Modified: invoice-rate-detection-1.0.15/prompts.py
+  - Modified: invoice-rate-detection-1.0.15/pyproject.toml
+  - Modified: invoice-rate-detection-1.0.15/report_generator.py
+  - Modified: invoice-rate-detection-1.0.15/report_utils.py
+  - Modified: invoice-rate-detection-1.0.15/uv.lock
+  - Modified: invoice-rate-detection-1.0.15/validation_engine.py
+  - Modified: invoice-rate-detection-1.0.15/validation_helpers.py
+  - Modified: invoice-rate-detection-1.0.15/validators.py
+  - Modified: invoice-rate-detection-1.0.15/version.py
+  - Modified: uv.lock
+
+**Deployment:** 2025-08-08 11:18:21 MDT
+
+
 ## [1.0.16] - 2025-08-08
 
 ### Changes

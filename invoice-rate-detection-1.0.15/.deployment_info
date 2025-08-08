@@ -1,9 +1,0 @@
-Deployment Information
-=====================
-Version: 1.0.15
-Build Date: 2025-08-08 10:27:23 MDT
-Build From: 9f609d9
-Build Branch: master
-
-This is a deployed version of the Invoice Rate Detection System.
-Version information is static and does not depend on git.

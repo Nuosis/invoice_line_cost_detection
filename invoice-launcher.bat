@@ -2,11 +2,10 @@
 setlocal enabledelayedexpansion
 
 REM Invoice Rate Detection System - Windows Launcher Script
-REM Version: 1.0.0
 REM Description: Automated setup, update, and launcher for the invoice-checker system on Windows
 
 REM Configuration
-set "REPO_URL=https://github.com/your-username/invoice_line_cost_detection.git"
+set "REPO_URL=https://github.com/nuosis/invoice_line_cost_detection.git"
 set "PROJECT_DIR=invoice_line_cost_detection"
 set "DB_FILE=invoice_data.db"
 set "BACKUP_DIR=backups"
@@ -16,9 +15,6 @@ set "INFO_PREFIX=[INFO]"
 set "SUCCESS_PREFIX=[SUCCESS]"
 set "WARNING_PREFIX=[WARNING]"
 set "ERROR_PREFIX=[ERROR]"
-
-REM Show banner
-call :show_banner
 
 REM Check if we need to install first
 if not exist "%PROJECT_DIR%" (
@@ -60,35 +56,29 @@ cls
 call :show_banner
 call :show_main_menu
 
-set /p "choice=Select option (1-5): "
+set /p "choice=Select option (1-4): "
 
 if "%choice%"=="1" (
-    call :process_invoices
+    call :launch_interactive_app
     pause
     goto main_loop
 )
 if "%choice%"=="2" (
-    call :manage_parts
-    pause
-    goto main_loop
-)
-if "%choice%"=="3" (
-    call :manage_database
-    pause
-    goto main_loop
-)
-if "%choice%"=="4" (
     call :setup_workflow
     pause
     goto main_loop
 )
-if "%choice%"=="5" (
+if "%choice%"=="3" (
+    call :show_help
+    goto main_loop
+)
+if "%choice%"=="4" (
     echo %INFO_PREFIX% Thank you for using Invoice Rate Detection System!
     pause
     exit /b 0
 )
 
-echo %ERROR_PREFIX% Invalid option. Please select 1-5.
+echo %ERROR_PREFIX% Invalid option. Please select 1-4.
 pause
 goto main_loop
 
@@ -106,25 +96,48 @@ goto :eof
 :show_banner
 call :get_app_version
 echo.
-echo ================================================================================
-echo                           INVOICE RATE DETECTOR
-echo                     Advanced Invoice Rate Detection System
-echo                              Version %app_version%
-echo                              Windows Version
-echo ================================================================================
+echo ╔═══════════════════════════════════════════════════════════════════════════════════╗
+echo ║                                                                                   ║
+echo ║    ██╗███╗   ██╗██╗   ██╗ ██████╗ ██╗ ██████╗███████╗                             ║
+echo ║    ██║████╗  ██║██║   ██║██╔═══██╗██║██╔════╝██╔════╝                             ║
+echo ║    ██║██╔██╗ ██║██║   ██║██║   ██║██║██║     █████╗                               ║
+echo ║    ██║██║╚██╗██║╚██╗ ██╔╝██║   ██║██║██║     ██╔══╝                               ║
+echo ║    ██║██║ ╚████║ ╚████╔╝ ╚██████╔╝██║╚██████╗███████╗                             ║
+echo ║    ╚═╝╚═╝  ╚═══╝  ╚═══╝   ╚═════╝ ╚═╝ ╚═════╝╚══════╝                             ║
+echo ║                                                                                   ║
+echo ║                    ██████╗  █████╗ ████████╗███████╗                              ║
+echo ║                    ██╔══██╗██╔══██╗╚══██╔══╝██╔════╝                              ║
+echo ║                    ██████╔╝███████║   ██║   █████╗                                ║
+echo ║                    ██╔══██╗██╔══██║   ██║   ██╔══╝                                ║
+echo ║                    ██║  ██║██║  ██║   ██║   ███████╗                              ║
+echo ║                    ╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝   ╚══════╝                              ║
+echo ║                                                                                   ║
+echo ║               ██████╗ ███████╗████████╗███████╗ ██████╗████████╗ ██████╗ ██████╗  ║
+echo ║               ██╔══██╗██╔════╝╚══██╔══╝██╔════╝██╔════╝╚══██╔══╝██╔═══██╗██╔══██╗ ║
+echo ║               ██║  ██║█████╗     ██║   █████╗  ██║        ██║   ██║   ██║██████╔╝ ║
+echo ║               ██║  ██║██╔══╝     ██║   ██╔══╝  ██║        ██║   ██║   ██║██╔══██╗ ║
+echo ║               ██████╔╝███████╗   ██║   ███████╗╚██████╗   ██║   ╚██████╔╝██║  ██║ ║
+echo ║               ╚═════╝ ╚══════╝   ╚═╝   ╚══════╝ ╚═════╝   ╚═╝    ╚═════╝ ╚═╝  ╚═╝ ║
+echo ║                                                                                   ║
+echo ║                          Advanced Invoice Rate Detection                          ║
+echo ║                         marcus@claritybusinesssolutions.ca                        ║
+echo ╚═══════════════════════════════════════════════════════════════════════════════════╝
+echo                                 Version %app_version%
 echo.
 goto :eof
 
 :show_main_menu
-echo ================================================================================
-echo                                MAIN MENU                                     
-echo ================================================================================
+echo ╔═════════════════════════════════════════════════════════════════════════════════╗
+echo ║                                   MAIN MENU                                     ║
+echo ╚═════════════════════════════════════════════════════════════════════════════════╝
 echo.
-echo 1) Process Invoices    - Run interactive invoice processing with discovery
-echo 2) Manage Parts        - Add, update, import/export parts database
-echo 3) Manage Database     - Backup, restore, and maintain database
-echo 4) Setup               - Install, update, and configure system
-echo 5) Exit                - Exit the application
+echo 1) Launch Application  - Start the interactive Invoice Rate Detection System
+echo 2) Setup               - Install, update, and configure system
+echo 3) Help                - Show help and documentation
+echo 4) Exit                - Exit the launcher
+echo.
+echo Note: All invoice processing, parts management, and database operations
+echo are available through the interactive application (option 1).
 echo.
 goto :eof
 
@@ -151,9 +164,34 @@ if errorlevel 1 (
 REM Check Git
 git --version >nul 2>&1
 if errorlevel 1 (
-    echo %ERROR_PREFIX% Git is required but not installed. Please install Git.
-    pause
-    exit /b 1
+    echo %WARNING_PREFIX% Git not found. Installing Git...
+    echo %INFO_PREFIX% Downloading Git for Windows...
+    
+    REM Try to install Git using winget (Windows Package Manager)
+    winget install --id Git.Git -e --source winget >nul 2>&1
+    if errorlevel 1 (
+        echo %WARNING_PREFIX% Winget installation failed. Trying chocolatey...
+        choco install git -y >nul 2>&1
+        if errorlevel 1 (
+            echo %ERROR_PREFIX% Could not install Git automatically.
+            echo Please install Git manually from: https://git-scm.com/download/win
+            pause
+            exit /b 1
+        )
+    )
+    
+    REM Refresh PATH to include Git
+    call refreshenv >nul 2>&1
+    
+    REM Check if Git is now available
+    git --version >nul 2>&1
+    if errorlevel 1 (
+        echo %ERROR_PREFIX% Git installation failed. Please install Git manually.
+        echo Download from: https://git-scm.com/download/win
+        pause
+        exit /b 1
+    )
+    echo %SUCCESS_PREFIX% Git installed successfully
 )
 
 echo %SUCCESS_PREFIX% All requirements satisfied
@@ -233,26 +271,6 @@ echo %WARNING_PREFIX% Automatic backup setup requires manual configuration on Wi
 echo Please set up a scheduled task to run backup operations daily.
 goto :eof
 
-:create_desktop_shortcut
-echo %INFO_PREFIX% Creating desktop shortcut...
-
-set "desktop_dir=%USERPROFILE%\Desktop"
-set "shortcut_file=%desktop_dir%\Invoice Rate Detector.bat"
-set "launcher_path=%CD%\invoice-launcher.bat"
-
-REM Create a batch file shortcut that opens in command prompt
-echo @echo off > "%shortcut_file%"
-echo cd /d "%CD%" >> "%shortcut_file%"
-echo start "Invoice Rate Detector" cmd /k "invoice-launcher.bat" >> "%shortcut_file%"
-
-if exist "%shortcut_file%" (
-    echo %SUCCESS_PREFIX% Desktop shortcut created: Invoice Rate Detector.bat
-    echo %INFO_PREFIX% You can now double-click the shortcut on your desktop to launch the application
-) else (
-    echo %WARNING_PREFIX% Could not create desktop shortcut
-)
-goto :eof
-
 :verify_backup_system
 echo %INFO_PREFIX% Verifying backup system...
 
@@ -270,8 +288,8 @@ if not exist "%PROJECT_DIR%\%BACKUP_DIR%" (
 echo %SUCCESS_PREFIX% Backup system verified
 goto :eof
 
-:process_invoices
-echo %INFO_PREFIX% Starting invoice processing workflow...
+:launch_interactive_app
+echo %INFO_PREFIX% Launching Invoice Rate Detection System...
 
 cd "%PROJECT_DIR%"
 
@@ -279,114 +297,12 @@ REM Check system status first
 echo %INFO_PREFIX% Checking system status...
 uv run invoice-checker status
 
-REM Interactive processing
-echo %INFO_PREFIX% Starting interactive processing with discovery...
-echo Please select your invoice folder when prompted
-
-REM Run discovery first
-uv run invoice-checker discover --interactive
-
-REM Then process invoices
-uv run invoice-checker process --interactive
+REM Launch the Python interactive mode (this handles all application operations)
+echo %INFO_PREFIX% Starting interactive application...
+uv run invoice-checker
 
 cd ..
-echo %SUCCESS_PREFIX% Invoice processing completed
-goto :eof
-
-:manage_parts
-echo %INFO_PREFIX% Starting parts management...
-
-cd "%PROJECT_DIR%"
-
-echo Parts Management Options:
-echo 1) List all parts
-echo 2) Add new part
-echo 3) Update existing part
-echo 4) Import parts from CSV
-echo 5) Export parts to CSV
-echo 6) Parts statistics
-echo 7) Return to main menu
-
-set /p "parts_choice=Select option (1-7): "
-
-if "%parts_choice%"=="1" (
-    uv run invoice-checker parts list
-) else if "%parts_choice%"=="2" (
-    echo Adding new part...
-    set /p "part_num=Enter part number: "
-    set /p "part_price=Enter authorized price: "
-    set /p "part_desc=Enter description (optional): "
-    set /p "part_cat=Enter category (optional): "
-    
-    set "cmd=uv run invoice-checker parts add !part_num! !part_price!"
-    if not "!part_desc!"=="" set "cmd=!cmd! --description "!part_desc!""
-    if not "!part_cat!"=="" set "cmd=!cmd! --category "!part_cat!""
-    
-    !cmd!
-) else if "%parts_choice%"=="3" (
-    uv run invoice-checker parts list
-    set /p "part_num=Enter part number to update: "
-    set /p "new_price=Enter new price (or press enter to skip): "
-    
-    set "cmd=uv run invoice-checker parts update !part_num!"
-    if not "!new_price!"=="" set "cmd=!cmd! --price !new_price!"
-    
-    !cmd!
-) else if "%parts_choice%"=="4" (
-    set /p "csv_file=Enter CSV file path: "
-    uv run invoice-checker parts import "!csv_file!"
-) else if "%parts_choice%"=="5" (
-    set /p "output_file=Enter output CSV file path: "
-    uv run invoice-checker parts export "!output_file!"
-) else if "%parts_choice%"=="6" (
-    uv run invoice-checker parts stats
-) else if "%parts_choice%"=="7" (
-    cd ..
-    goto :eof
-) else (
-    echo %ERROR_PREFIX% Invalid option
-)
-
-cd ..
-goto :eof
-
-:manage_database
-echo %INFO_PREFIX% Starting database management...
-
-cd "%PROJECT_DIR%"
-
-echo Database Management Options:
-echo 1) Create backup
-echo 2) Restore from backup
-echo 3) Database maintenance
-echo 4) Database migration
-echo 5) View backup history
-echo 6) Return to main menu
-
-set /p "db_choice=Select option (1-6): "
-
-if "%db_choice%"=="1" (
-    uv run invoice-checker database backup
-) else if "%db_choice%"=="2" (
-    echo Available backups:
-    dir /b "%BACKUP_DIR%\*.db" 2>nul || echo No backups found
-    set /p "backup_file=Enter backup file path: "
-    uv run invoice-checker database restore "!backup_file!"
-) else if "%db_choice%"=="3" (
-    uv run invoice-checker database maintenance
-) else if "%db_choice%"=="4" (
-    uv run invoice-checker database migrate
-) else if "%db_choice%"=="5" (
-    echo Backup history:
-    dir "%BACKUP_DIR%" 2>nul || echo No backups found
-) else if "%db_choice%"=="6" (
-    cd ..
-    goto :eof
-) else (
-    echo %ERROR_PREFIX% Invalid option
-)
-
-cd ..
+echo %SUCCESS_PREFIX% Application session completed
 goto :eof
 
 :setup_workflow
@@ -427,4 +343,65 @@ if "%setup_choice%"=="1" (
     echo %ERROR_PREFIX% Invalid option
 )
 
+goto :eof
+
+:show_help
+echo %INFO_PREFIX% Displaying help and documentation...
+
+echo ╔═════════════════════════════════════════════════════════════════════════════════╗
+echo ║                              HELP ^& DOCUMENTATION                               ║
+echo ╚═════════════════════════════════════════════════════════════════════════════════╝
+echo.
+
+echo OVERVIEW
+echo The Clarity Invoice Validator is an advanced invoice rate detection system
+echo designed to help businesses identify pricing anomalies in their invoices.
+echo.
+
+echo MAIN FEATURES
+echo • Process Invoices: Analyze PDF invoices for pricing discrepancies
+echo • Manage Parts: Maintain a database of parts with authorized prices
+echo • Database Management: Backup, restore, and maintain your data
+echo • Interactive Discovery: Automatically discover new parts from invoices
+echo.
+
+echo GETTING STARTED
+echo 1. First time users should run 'Setup' to install and configure the system
+echo 2. Launch the interactive application to access all features
+echo 3. Use the guided workflows for invoice processing and parts management
+echo 4. Review generated reports in CSV format (can be opened in Excel)
+echo.
+
+echo WORKFLOW TIPS
+echo • Start with a small batch of invoices to test the system
+echo • Use interactive discovery to build your parts database quickly
+echo • Regular backups are automatically configured but can be run manually
+echo • Reports are saved in the project directory and can be opened in Excel
+echo.
+
+echo TROUBLESHOOTING
+echo • If processing fails, check that PDF files are readable and not encrypted
+echo • Ensure Python 3.8+ and UV package manager are installed
+echo • Use 'Setup ^> Verify system status' to check for issues
+echo • Database backups are created automatically before major operations
+echo.
+
+echo SUPPORT
+echo • Documentation: Check the docs/ folder in the project directory
+echo • User Manual: docs/USER_MANUAL.md contains detailed instructions
+echo • Contact: marcus@claritybusinesssolutions.ca
+echo • GitHub: https://github.com/Nuosis/invoice_line_cost_detection
+echo.
+
+if exist "%PROJECT_DIR%" (
+    echo QUICK COMMANDS
+    echo You can also run commands directly from the project directory:
+    echo • cd %PROJECT_DIR%
+    echo • uv run invoice-checker status          # Check system status
+    echo • uv run invoice-checker parts list      # List all parts
+    echo • uv run invoice-checker --help          # Show CLI help
+    echo.
+)
+
+pause
 goto :eof
