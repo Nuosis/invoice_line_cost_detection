@@ -21,12 +21,12 @@ class CLIContext:
         self.config_file = None
         self.db_manager = None
     
-    def get_db_manager(self) -> DatabaseManager:
+    def get_db_manager(self, skip_version_check: bool = False) -> DatabaseManager:
         """Get or create database manager instance."""
         if self.db_manager is None:
             # Always check for updated environment variable
             current_db_path = os.environ.get('INVOICE_CHECKER_DB', self.database_path)
-            self.db_manager = DatabaseManager(current_db_path)
+            self.db_manager = DatabaseManager(current_db_path, skip_version_check=skip_version_check)
         return self.db_manager
 
 

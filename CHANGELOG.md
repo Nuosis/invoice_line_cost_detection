@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.19] - 2025-08-08
+
+### Changes
+
+Modified files:
+  - Modified: README.md
+  - Modified: cli/commands/config_commands.py
+  - Modified: cli/commands/database_commands.py
+  - Modified: cli/commands/parts_commands.py
+  - Modified: cli/context.py
+  - Modified: cli/main.py
+  - Modified: database/database.py
+  - Modified: database/db_migration.py
+  - Modified: database/models.py
+  - Modified: invoice-launcher.bat
+  - Modified: invoice-launcher.sh
+
+**Deployment:** 2025-08-08 12:57:08 MDT
+
+
 ## [1.0.18] - 2025-08-08
 
 ### Changes

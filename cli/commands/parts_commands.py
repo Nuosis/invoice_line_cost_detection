@@ -869,7 +869,7 @@ def _interactive_list_parts(ctx):
         if not category.strip():
             category = None
         
-        include_inactive = click.confirm("Include inactive parts?", default=False)
+        include_inactive = click.confirm("Include inactive parts? (n)", default=False)
         
         # Get display options
         format_choice = click.prompt(
@@ -880,16 +880,18 @@ def _interactive_list_parts(ctx):
         formats = ['table', 'csv', 'json']
         format_type = formats[format_choice - 1]
         
-        # Call the list command
-        ctx.invoke(list,
-                  category=category,
-                  active_only=not include_inactive,
-                  include_inactive=include_inactive,
-                  format=format_type,
-                  limit=None,
-                  offset=0,
-                  sort_by='part_number',
-                  order='asc')
+        # Call the list command using the Click context, not CLIContext
+        click.get_current_context().invoke(
+            list,
+            category=category,
+            active_only=not include_inactive,
+            include_inactive=include_inactive,
+            format=format_type,
+            limit=None,
+            offset=0,
+            sort_by='part_number',
+            order='asc'
+        )
         
     except UserCancelledError:
         print_info("Parts listing cancelled.")
@@ -989,7 +991,7 @@ def _interactive_export_parts(ctx):
         # Get export options
         output_file = click.prompt("Output file path", type=str)
         category = click.prompt("Filter by category (optional)", default="", type=str)
-        include_inactive = click.confirm("Include inactive parts?", default=False)
+        include_inactive = click.confirm("Include inactive parts? [n]", default=False)
         
         format_choice = click.prompt(
             "Export format [1=csv, 2=json]",

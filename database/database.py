@@ -35,12 +35,13 @@ class DatabaseManager:
     and error handling.
     """
     
-    def __init__(self, db_path: str = "invoice_detection.db"):
+    def __init__(self, db_path: str = "invoice_detection.db", skip_version_check: bool = False):
         """
         Initialize the database manager.
         
         Args:
             db_path: Path to the SQLite database file
+            skip_version_check: Skip version compatibility check (for migration operations)
         """
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -61,6 +62,28 @@ class DatabaseManager:
                     conn.commit()
             # Verify database integrity
             self._verify_database_schema()
+
+            # --- MIGRATION VERSION CHECK ---
+            if not skip_version_check:
+                try:
+                    with sqlite3.connect(str(self.db_path)) as conn:
+                        cursor = conn.execute("SELECT value FROM config WHERE key = 'database_version'")
+                        version_row = cursor.fetchone()
+                        current_version = version_row[0] if version_row else "1.0"
+                        # Set this to the required version for the codebase
+                        required_version = "1.0"
+                        if current_version < required_version:
+                            logger.error(
+                                f"Database schema is out of date (current: {current_version}, required: {required_version}). "
+                                "Please run 'invoice-checker database migrate' to update the schema."
+                            )
+                            raise RuntimeError(
+                                f"Database schema is out of date (current: {current_version}, required: {required_version}). "
+                                "Please run 'invoice-checker database migrate' to update the schema."
+                            )
+                except Exception as e:
+                    logger.error(f"Failed to check database version: {e}")
+                    raise
 
     @contextmanager
     def get_connection(self):
@@ -205,7 +228,10 @@ class DatabaseManager:
                     ('price_tolerance', '0.001', 'number', 'Price comparison tolerance for floating point precision', 'validation'),
                     ('backup_retention_days', '30', 'number', 'Number of days to retain database backups', 'maintenance'),
                     ('log_retention_days', '365', 'number', 'Number of days to retain discovery log entries', 'maintenance'),
-                    ('database_version', '1.0', 'string', 'Current database schema version', 'system')
+                    ('database_version', '1.0', 'string', 'Current database schema version', 'system'),
+                    ('default_invoice_location', 'desktop/invoices/', 'string', 'Default directory path for invoice files', 'general'),
+                    ('auto_output_location', 'true', 'boolean', 'Automatically determine output file location', 'general'),
+                    ('preconfigured_mode', 'false', 'boolean', 'Enable preconfigured processing mode', 'general')
                 ]
                 
                 for config_item in config_data:
@@ -1201,6 +1227,11 @@ class DatabaseManager:
             valid_formats = ('csv', 'json', 'txt')
             if value not in valid_formats:
                 raise ValidationError(f"Invalid output format: '{value}'. Must be one of: {', '.join(valid_formats)}")
+        
+        elif key == 'default_invoice_location':
+            # Validate that it's a reasonable path string (allow empty for user to set later)
+            if not isinstance(value, str):
+                raise ValidationError(f"Default invoice location must be a string path")
 
     def reset_config_to_default(self, key: str) -> bool:
         """
@@ -1225,7 +1256,10 @@ class DatabaseManager:
                 'price_tolerance': '0.001',
                 'backup_retention_days': '30',
                 'log_retention_days': '365',
-                'database_version': '1.0'
+                'database_version': '1.0',
+                'default_invoice_location': 'desktop/invoices/',
+                'auto_output_location': 'true',
+                'preconfigured_mode': 'false'
             }
             
             if key not in default_configs:

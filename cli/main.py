@@ -107,6 +107,9 @@ def run_main_interactive_menu(ctx):
     from cli.prompts import prompt_for_choice
     from cli.exceptions import UserCancelledError
     
+    # Ensure database is initialized before showing menu
+    ctx.get_db_manager()
+
     # Show welcome message
     click.echo("\n" + "="*75)
     click.echo("           INVOICE RATE DETECTION SYSTEM - MAIN MENU")
@@ -127,44 +130,47 @@ def run_main_interactive_menu(ctx):
                 "Process Invoices    - Run interactive invoice processing with discovery",
                 "Manage Parts        - Add, update, import/export parts database",
                 "Manage Database     - Backup, restore, and maintain database",
+                "Setup / Configuration - System setup and configuration options",
                 "Help                - Show help and documentation",
                 "Exit                - Exit the application"
             ]
-            
-            for i, option in enumerate(menu_options, 1):
-                click.echo(f"{i}) {option}")
-            
+
             click.echo("")
-            choice = prompt_for_choice("Select option (1-5)", [str(i) for i in range(1, 6)])
-            choice_num = int(choice)
+            choice = prompt_for_choice("Enter choice", menu_options)
             
-            if choice_num == 1:
+            if choice == menu_options[0]:
                 # Process Invoices
                 print_info("[INFO] Starting invoice processing...")
                 from cli.commands.invoice_commands import run_interactive_processing
                 run_interactive_processing(ctx)
                 
-            elif choice_num == 2:
+            elif choice == menu_options[1]:
                 # Manage Parts
                 print_info("[INFO] Starting parts management...")
                 _run_interactive_parts_management(ctx)
                 
-            elif choice_num == 3:
+            elif choice == menu_options[2]:
                 # Manage Database
                 print_info("[INFO] Starting database management...")
                 from cli.commands.database_commands import run_interactive_database_management
                 run_interactive_database_management(ctx)
-                
-            elif choice_num == 4:
+
+            elif choice == menu_options[3]:
+                # Setup / Configuration
+                print_info("[INFO] Starting setup and configuration management...")
+                from cli.commands.config_commands import run_interactive_config_management
+                run_interactive_config_management(ctx)
+
+            elif choice == menu_options[4]:
                 # Help
                 _show_help_menu(ctx)
                 
-            elif choice_num == 5:
+            elif choice == menu_options[5]:
                 # Exit
                 print_info("Thank you for using the Invoice Rate Detection System!")
                 break
             else:
-                print_error("Invalid option. Please select 1-5.")
+                print_error("Invalid option. Please select a valid menu option.")
                 continue
                 
         except UserCancelledError:
@@ -206,44 +212,33 @@ def _run_interactive_parts_management(ctx):
                 "Search parts",
                 "Return to main menu"
             ]
-            
+
             print_info("Parts Management Options:")
-            for i, option in enumerate(parts_options, 1):
-                click.echo(f"{i}) {option}")
-            
-            choice = prompt_for_choice("Select option (1-7)", [str(i) for i in range(1, 8)])
-            choice_num = int(choice)
-            
-            if choice_num == 1:
-                # List parts
+            choice = prompt_for_choice("Enter choice", parts_options)
+
+            if choice == parts_options[0]:
                 from cli.commands.parts_commands import _interactive_list_parts
                 _interactive_list_parts(ctx)
-            elif choice_num == 2:
-                # Add new part
+            elif choice == parts_options[1]:
                 from cli.commands.parts_commands import _interactive_add_part
                 _interactive_add_part(ctx)
-            elif choice_num == 3:
-                # Update existing part
+            elif choice == parts_options[2]:
                 from cli.commands.parts_commands import _interactive_update_part
                 _interactive_update_part(ctx)
-            elif choice_num == 4:
-                # Import parts from CSV
+            elif choice == parts_options[3]:
                 from cli.commands.parts_commands import _interactive_import_parts
                 _interactive_import_parts(ctx)
-            elif choice_num == 5:
-                # Export parts to CSV
+            elif choice == parts_options[4]:
                 from cli.commands.parts_commands import _interactive_export_parts
                 _interactive_export_parts(ctx)
-            elif choice_num == 6:
-                # Search parts
+            elif choice == parts_options[5]:
                 from cli.commands.parts_commands import _interactive_search_parts
                 _interactive_search_parts(ctx)
-            elif choice_num == 7:
-                # Return to main menu
+            elif choice == parts_options[6]:
                 print_info("Returning to main menu...")
                 break
             else:
-                print_error("Invalid option. Please select 1-7.")
+                print_error("Invalid option. Please select a valid menu option.")
                 continue
                 
         except UserCancelledError:
@@ -510,6 +505,7 @@ GETTING HELP:
 - Use 'View system status' to check system health
 - Ensure all dependencies are installed
 - Try processing a simple test file first
+- email marcus@claritybusinesssolutions.ca
 
 If problems persist, check the documentation or contact support.
 

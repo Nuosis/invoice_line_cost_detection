@@ -487,74 +487,87 @@ setup_workflow() {
 show_help() {
     log_info "Displaying help and documentation..."
     
-    echo -e "${CYAN}╔═════════════════════════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║                              HELP & DOCUMENTATION                               ║${NC}"
-    echo -e "${CYAN}╚═════════════════════════════════════════════════════════════════════════════════╝${NC}"
-    echo ""
-    
-    echo -e "${GREEN}OVERVIEW${NC}"
-    echo "The Clarity Invoice Validator is an advanced invoice rate detection system"
-    echo "designed to help businesses identify pricing anomalies in their invoices."
-    echo ""
-    
-    echo -e "${GREEN}MAIN FEATURES${NC}"
-    echo "• Process Invoices: Analyze PDF invoices for pricing discrepancies"
-    echo "• Manage Parts: Maintain a database of parts with authorized prices"
-    echo "• Database Management: Backup, restore, and maintain your data"
-    echo "• Interactive Discovery: Automatically discover new parts from invoices"
-    echo ""
-    
-    echo -e "${GREEN}GETTING STARTED${NC}"
-    echo "1. First time users should run 'Setup' to install and configure the system"
-    echo "2. Launch the application to access all features interactively"
-    echo "3. Use the application's main menu to manage parts and process invoices"
-    echo "4. Review generated reports in CSV format (can be opened in Excel)"
-    echo ""
-    
-    echo -e "${GREEN}WORKFLOW TIPS${NC}"
-    echo "• Start with a small batch of invoices to test the system"
-    echo "• Use interactive discovery to build your parts database quickly"
-    echo "• Regular backups are automatically configured but can be run manually"
-    echo "• Reports are saved in the project directory and can be opened in Excel"
-    echo ""
-    
-    echo -e "${GREEN}TROUBLESHOOTING${NC}"
-    echo "• If processing fails, check that PDF files are readable and not encrypted"
-    echo "• Ensure Python 3.8+ and UV package manager are installed"
-    echo "• Use 'Setup > Verify system status' to check for issues"
-    echo "• Database backups are created automatically before major operations"
-    echo ""
-    
-    echo -e "${GREEN}SUPPORT${NC}"
-    echo "• Documentation: Check the docs/ folder in the project directory"
-    echo "• User Manual: docs/USER_MANUAL.md contains detailed instructions"
-    echo "• Contact: marcus@claritybusinesssolutions.ca"
-    echo "• GitHub: https://github.com/Nuosis/invoice_line_cost_detection"
-    echo ""
-    
-    if check_project_exists; then
-        echo -e "${GREEN}QUICK COMMANDS${NC}"
-        echo "You can also run commands directly from the project directory:"
-        echo "• cd $PROJECT_DIR"
-        echo "• uv run invoice-checker status          # Check system status"
-        echo "• uv run invoice-checker parts list      # List all parts"
-        echo "• uv run invoice-checker --help          # Show CLI help"
+    # Check if USER_MANUAL.md exists and display it
+    if [[ -f "docs/USER_MANUAL.md" ]]; then
+        echo -e "${CYAN}╔═══════════════════════════════════════════════════════════════════════════════════╗${NC}"
+        echo -e "${CYAN}║                                USER MANUAL                                        ║${NC}"
+        echo -e "${CYAN}╚═══════════════════════════════════════════════════════════════════════════════════╝${NC}"
         echo ""
+        echo -e "${YELLOW}Navigation: Use arrow keys or Page Up/Down to scroll. Press 'q' to exit.${NC}"
+        echo ""
+        read -p "Press Enter to open the manual..."
+        
+        # Display the manual with pagination
+        if command -v less >/dev/null 2>&1; then
+            less docs/USER_MANUAL.md
+        elif command -v more >/dev/null 2>&1; then
+            more docs/USER_MANUAL.md
+        else
+            cat docs/USER_MANUAL.md
+            echo ""
+            read -p "Press Enter to continue..."
+        fi
+    elif [[ -f "$PROJECT_DIR/docs/USER_MANUAL.md" ]]; then
+        echo -e "${CYAN}╔═══════════════════════════════════════════════════════════════════════════════════╗${NC}"
+        echo -e "${CYAN}║                                USER MANUAL                                        ║${NC}"
+        echo -e "${CYAN}╚═══════════════════════════════════════════════════════════════════════════════════╝${NC}"
+        echo ""
+        echo -e "${YELLOW}Navigation: Use arrow keys or Page Up/Down to scroll. Press 'q' to exit.${NC}"
+        echo ""
+        read -p "Press Enter to open the manual..."
+        
+        # Display the manual with pagination
+        if command -v less >/dev/null 2>&1; then
+            less "$PROJECT_DIR/docs/USER_MANUAL.md"
+        elif command -v more >/dev/null 2>&1; then
+            more "$PROJECT_DIR/docs/USER_MANUAL.md"
+        else
+            cat "$PROJECT_DIR/docs/USER_MANUAL.md"
+            echo ""
+            read -p "Press Enter to continue..."
+        fi
+    else
+        # Fallback to basic help if manual not found
+        echo -e "${CYAN}╔═══════════════════════════════════════════════════════════════════════════════════╗${NC}"
+        echo -e "${CYAN}║                                HELP & DOCUMENTATION                               ║${NC}"
+        echo -e "${CYAN}╚═══════════════════════════════════════════════════════════════════════════════════╝${NC}"
+        echo ""
+        
+        echo -e "${YELLOW}User manual not found. Displaying basic help...${NC}"
+        echo ""
+        
+        echo -e "${GREEN}OVERVIEW${NC}"
+        echo "The Clarity Invoice Validator is an advanced invoice rate detection system"
+        echo "designed to help businesses identify pricing anomalies in their invoices."
+        echo ""
+        
+        echo -e "${GREEN}GETTING STARTED${NC}"
+        echo "1. First time users should run 'Setup' to install and configure the system"
+        echo "2. Launch the application to access all features interactively"
+        echo "3. Use the application's main menu to manage parts and process invoices"
+        echo "4. Review generated reports in CSV format (can be opened in Excel)"
+        echo ""
+        
+        echo -e "${GREEN}SUPPORT${NC}"
+        echo "• Contact: marcus@claritybusinesssolutions.ca"
+        echo "• GitHub: https://github.com/Nuosis/invoice_line_cost_detection"
+        echo ""
+        
+        read -p "Press Enter to continue..."
     fi
-    
-    read -p "Press Enter to continue..."
 }
 
 # Main menu
 show_main_menu() {
-    echo -e "${CYAN}╔═════════════════════════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║                                   MAIN MENU                                     ║${NC}"
-    echo -e "${CYAN}╚═════════════════════════════════════════════════════════════════════════════════╝${NC}"
+    echo -e "${CYAN}╔═══════════════════════════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║                                     MAIN MENU                                     ║${NC}"
+    echo -e "${CYAN}╚═══════════════════════════════════════════════════════════════════════════════════╝${NC}"
     echo ""
     echo -e "${GREEN}1)${NC} Launch Application  - Start the interactive Invoice Rate Detection System"
     echo -e "${GREEN}2)${NC} Setup               - Install, update, and configure system"
-    echo -e "${GREEN}3)${NC} Help                - Show help and documentation"
-    echo -e "${GREEN}4)${NC} Exit                - Exit the launcher"
+    echo -e "${GREEN}3)${NC} Configuration       - Setup and manage system options"
+    echo -e "${GREEN}4)${NC} Help                - Show help and documentation"
+    echo -e "${GREEN}5)${NC} Exit                - Exit the launcher"
     echo ""
     echo -e "${YELLOW}Note: All invoice processing, parts management, and database operations"
     echo -e "are available through the interactive application (option 1).${NC}"
@@ -611,7 +624,7 @@ main() {
         show_banner
         show_main_menu
         
-        read -p "Select option (1-4): " choice
+        read -p "Select option (1-5): " choice
         
         case $choice in
             1)
@@ -626,14 +639,25 @@ main() {
                 fi
                 ;;
             3)
-                show_help
+                # Configuration management (interactive setup wizard)
+                if [[ -d "$PROJECT_DIR" ]]; then
+                    cd "$PROJECT_DIR"
+                    uv run invoice-checker config setup
+                    cd ..
+                else
+                    log_error "Project not found. Please install the system first."
+                fi
+                read -p "Press Enter to continue..."
                 ;;
             4)
+                show_help
+                ;;
+            5)
                 log_info "Thank you for using Invoice Rate Detection System!"
                 exit 0
                 ;;
             *)
-                log_error "Invalid option. Please select 1-4."
+                log_error "Invalid option. Please select 1-5."
                 read -p "Press Enter to continue..."
                 ;;
         esac

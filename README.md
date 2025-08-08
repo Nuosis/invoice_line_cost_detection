@@ -154,6 +154,47 @@ uv run invoice-checker discovery stats --days 7
 uv run invoice-checker discovery export --output discovery_data.csv
 ```
 
+#### Configuration Management
+
+The system supports flexible configuration of validation, reporting, and workflow options. You can view, set, and reset configuration values directly from the CLI, or use an interactive setup wizard for guided configuration.
+
+```bash
+# List all configuration options and their current values
+uv run invoice-checker config list
+
+# List configuration options in a specific category (e.g., validation)
+uv run invoice-checker config list --category validation
+
+# Show the value of a specific configuration key
+uv run invoice-checker config get validation_mode
+
+# Set a configuration value (auto-detects type)
+uv run invoice-checker config set validation_mode parts_based
+
+# Set a configuration value with explicit type and description
+uv run invoice-checker config set price_tolerance 0.001 --type number --description "Price comparison tolerance"
+
+# Reset a specific configuration to its default value
+uv run invoice-checker config reset validation_mode
+
+# Reset all configurations to defaults (with confirmation)
+uv run invoice-checker config reset
+
+# Run the interactive setup wizard (recommended for new users)
+uv run invoice-checker config setup
+```
+
+**Common configuration keys:**
+- `validation_mode`: How invoices are validated (`parts_based` or `threshold_based`)
+- `default_output_format`: Default report format (`txt`, `csv`, or `json`)
+- `auto_add_discovered_parts`: Automatically add unknown parts found during processing
+- `interactive_discovery`: Prompt user to add unknown parts interactively
+- `price_tolerance`: Tolerance for price comparisons (e.g., `0.001`)
+
+For a full list of available options and their descriptions, use `uv run invoice-checker config list --format table` or `--format json`.
+
+The interactive setup wizard (`uv run invoice-checker config setup`) will guide you through the most important configuration steps.
+
 ### Example Usage
 
 ```bash

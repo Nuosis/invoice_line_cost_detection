@@ -127,7 +127,10 @@ class DatabaseMigration:
         ('price_tolerance', '0.001', 'number', 'Price comparison tolerance for floating point precision', 'validation'),
         ('backup_retention_days', '30', 'number', 'Number of days to retain database backups', 'maintenance'),
         ('log_retention_days', '365', 'number', 'Number of days to retain discovery log entries', 'maintenance'),
-        ('database_version', '1.0', 'string', 'Current database schema version', 'system');
+        ('database_version', '1.0', 'string', 'Current database schema version', 'system'),
+        ('default_invoice_location', 'desktop/invoices/', 'string', 'Default directory path for invoice files', 'general'),
+        ('auto_output_location', 'true', 'boolean', 'Automatically determine output file location', 'general'),
+        ('preconfigured_mode', 'false', 'boolean', 'Enable preconfigured processing mode', 'general');
 
         -- Create triggers to update last_updated timestamps
         CREATE TRIGGER IF NOT EXISTS update_parts_timestamp

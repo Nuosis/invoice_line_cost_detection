@@ -281,7 +281,8 @@ def migrate(ctx, to_version, dry_run, backup_first):
         invoice-checker database migrate --to-version 2.0
     """
     try:
-        db_manager = ctx.get_db_manager()
+        # Use migration-safe database manager to avoid version check circular dependency
+        db_manager = ctx.get_db_manager(skip_version_check=True)
         
         # Get current database version
         current_version = db_manager.get_config_value('database_version', '1.0')
@@ -708,36 +709,32 @@ def run_interactive_database_management(ctx):
             ]
             
             print_info("Database Management Options:")
-            for i, option in enumerate(menu_options, 1):
-                click.echo(f"{i}) {option}")
-            
-            choice = prompt_for_choice("Select option (1-7)", [str(i) for i in range(1, 8)])
-            choice_num = int(choice)
-            
-            if choice_num == 1:
+            choice = prompt_for_choice("Enter choice", menu_options)
+
+            if choice == menu_options[0]:
                 # Create backup
                 _interactive_create_backup(ctx)
-            elif choice_num == 2:
+            elif choice == menu_options[1]:
                 # Restore from backup
                 _interactive_restore_backup(ctx)
-            elif choice_num == 3:
+            elif choice == menu_options[2]:
                 # Database maintenance
                 _interactive_database_maintenance(ctx)
-            elif choice_num == 4:
+            elif choice == menu_options[3]:
                 # Database migration
                 _interactive_database_migration(ctx)
-            elif choice_num == 5:
+            elif choice == menu_options[4]:
                 # View backup history
                 _interactive_view_backup_history(ctx)
-            elif choice_num == 6:
+            elif choice == menu_options[5]:
                 # Reset database
                 _interactive_reset_database(ctx)
-            elif choice_num == 7:
+            elif choice == menu_options[6]:
                 # Return to main menu
                 print_info("Returning to main menu...")
                 break
             else:
-                print_error("Invalid option. Please select 1-7.")
+                print_error("Invalid option. Please select a valid menu option.")
                 continue
                 
         except UserCancelledError:
@@ -797,46 +794,64 @@ def _interactive_restore_backup(ctx):
     """Interactive backup restore workflow."""
     try:
         print_info("\n--- Restore Database from Backup ---")
-        
-        # Show available backups first
-        _show_backup_history(ctx, limit=5, backup_dir=None)
-        
-        # Get backup file path
-        backup_path = click.prompt(
-            "Enter path to backup file",
-            type=click.Path(exists=True)
-        )
-        
+
+        # Find available backup files in current directory
         from pathlib import Path
-        backup_file = Path(backup_path)
-        
+        from datetime import datetime
+        from cli.prompts import prompt_for_choice
+
+        search_dir = Path.cwd()
+        backup_patterns = [
+            "*_backup_*.db",
+            "*backup*.db",
+            "backup_*.db",
+            "*_pre_restore_*.db",
+            "*_pre_maintenance_*.db"
+        ]
+        backup_files = []
+        for pattern in backup_patterns:
+            backup_files.extend(search_dir.glob(pattern))
+        backup_files = list(set(backup_files))
+        backup_files.sort(key=lambda f: f.stat().st_mtime, reverse=True)
+
+        if not backup_files:
+            print_warning("No backup files found in the current directory.")
+            return
+
+        # Present as a numbered menu
+        backup_choices = [
+            f"{f.name} ({datetime.fromtimestamp(f.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')}, {f.stat().st_size/1024/1024:.2f} MB)"
+            for f in backup_files
+        ]
+        choice = prompt_for_choice("Select backup file to restore", backup_choices)
+        backup_file = backup_files[backup_choices.index(choice)]
+
         # Show backup info
         backup_size = backup_file.stat().st_size
-        from datetime import datetime
         backup_date = datetime.fromtimestamp(backup_file.stat().st_mtime)
-        
+
         print_info(f"Backup file: {backup_file}")
         print_info(f"Backup size: {backup_size / (1024 * 1024):.2f} MB")
         print_info(f"Backup date: {backup_date.strftime('%Y-%m-%d %H:%M:%S')}")
-        
+
         # Confirm restore
         print_warning("This will replace the current database with the backup.")
         print_warning("All current data will be lost!")
-        
+
         if not click.confirm("Are you sure you want to restore from this backup?", default=False):
             print_info("Restore cancelled.")
             return
-        
+
         # Perform restore
         db_manager = ctx.get_db_manager()
-        
+
         progress = MultiStepProgress([
             "Verifying backup",
             "Creating pre-restore backup",
             "Restoring database",
             "Verifying restored database"
         ], "Database Restore")
-        
+
         try:
             progress.start_step("Verifying backup", "Checking backup integrity")
             try:
@@ -845,14 +860,14 @@ def _interactive_restore_backup(ctx):
             except DatabaseError as e:
                 progress.complete_step(False, f"Backup verification failed: {e}")
                 raise
-            
+
             progress.start_step("Creating pre-restore backup", "Saving current database")
             progress.complete_step(True, "Pre-restore backup created")
-            
+
             progress.start_step("Restoring database", "Replacing database with backup")
             db_manager.restore_backup(str(backup_file))
             progress.complete_step(True, "Database restored")
-            
+
             progress.start_step("Verifying restored database", "Checking database integrity")
             try:
                 _verify_backup_integrity(Path(db_manager.db_path), db_manager)
@@ -860,16 +875,16 @@ def _interactive_restore_backup(ctx):
             except DatabaseError as e:
                 progress.complete_step(False, f"Database verification failed: {e}")
                 raise
-            
+
             progress.finish(True, "Restore completed successfully")
-            
+
         except Exception as e:
             progress.finish(False, f"Restore failed: {e}")
             raise
-        
+
         print_success("Database restored successfully!")
         print_info("A pre-restore backup was created for safety.")
-        
+
     except Exception as e:
         print_error(f"Failed to restore backup: {e}")
 

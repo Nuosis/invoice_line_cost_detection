@@ -620,5 +620,26 @@ DEFAULT_CONFIG = {
         data_type='string',
         description='Current database schema version',
         category='system'
+    ),
+    'default_invoice_location': Configuration(
+        key='default_invoice_location',
+        value='desktop/invoices/',
+        data_type='string',
+        description='Default directory path for invoice files',
+        category='general'
+    ),
+    'auto_output_location': Configuration(
+        key='auto_output_location',
+        value='true',
+        data_type='boolean',
+        description='Automatically determine output file location',
+        category='general'
+    ),
+    'preconfigured_mode': Configuration(
+        key='preconfigured_mode',
+        value='false',
+        data_type='boolean',
+        description='Enable preconfigured processing mode',
+        category='general'
     )
 }

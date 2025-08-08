@@ -497,7 +497,6 @@ def setup(ctx, interactive):
             print_info("When unknown parts are found during processing:")
             print_info("  • Prompt to add each part (interactive)")
             print_info("  • Automatically add all parts (auto-add)")
-            print_info("  • Skip unknown parts (ignore)")
             
             current_auto_add = current_config.get('auto_add_discovered_parts', False)
             if isinstance(current_auto_add, str):
@@ -610,33 +609,29 @@ def run_interactive_config_management(ctx):
             ]
             
             print_info("Configuration Management Options:")
-            for i, option in enumerate(menu_options, 1):
-                click.echo(f"{i}) {option}")
-            
-            choice = prompt_for_choice("Select option (1-6)", [str(i) for i in range(1, 7)])
-            choice_num = int(choice)
-            
-            if choice_num == 1:
+            choice = prompt_for_choice("Enter choice", menu_options)
+
+            if choice == menu_options[0]:
                 # View all configurations
                 _interactive_list_config(ctx)
-            elif choice_num == 2:
+            elif choice == menu_options[1]:
                 # Get specific configuration
                 _interactive_get_config(ctx)
-            elif choice_num == 3:
+            elif choice == menu_options[2]:
                 # Set configuration value
                 _interactive_set_config(ctx)
-            elif choice_num == 4:
+            elif choice == menu_options[3]:
                 # Reset configuration
                 _interactive_reset_config(ctx)
-            elif choice_num == 5:
+            elif choice == menu_options[4]:
                 # Run setup wizard
                 ctx.invoke(setup, interactive=True)
-            elif choice_num == 6:
+            elif choice == menu_options[5]:
                 # Return to main menu
                 print_info("Returning to main menu...")
                 break
             else:
-                print_error("Invalid option. Please select 1-6.")
+                print_error("Invalid option. Please select a valid menu option.")
                 continue
                 
         except UserCancelledError:

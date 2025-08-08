@@ -56,7 +56,7 @@ cls
 call :show_banner
 call :show_main_menu
 
-set /p "choice=Select option (1-4): "
+set /p "choice=Select option (1-5): "
 
 if "%choice%"=="1" (
     call :launch_interactive_app
@@ -69,16 +69,28 @@ if "%choice%"=="2" (
     goto main_loop
 )
 if "%choice%"=="3" (
-    call :show_help
+    REM Configuration management (interactive setup wizard)
+    if exist "%PROJECT_DIR%" (
+        cd /d "%PROJECT_DIR%"
+        uv run invoice-checker config setup
+        cd ..
+    ) else (
+        echo %ERROR_PREFIX% Project not found. Please install the system first.
+    )
+    pause
     goto main_loop
 )
 if "%choice%"=="4" (
+    call :show_help
+    goto main_loop
+)
+if "%choice%"=="5" (
     echo %INFO_PREFIX% Thank you for using Invoice Rate Detection System!
     pause
     exit /b 0
 )
 
-echo %ERROR_PREFIX% Invalid option. Please select 1-4.
+echo %ERROR_PREFIX% Invalid option. Please select 1-5.
 pause
 goto main_loop
 
@@ -133,8 +145,9 @@ echo ╚════════════════════════
 echo.
 echo 1) Launch Application  - Start the interactive Invoice Rate Detection System
 echo 2) Setup               - Install, update, and configure system
-echo 3) Help                - Show help and documentation
-echo 4) Exit                - Exit the launcher
+echo 3) Configuration       - Setup and manage system options
+echo 4) Help                - Show help and documentation
+echo 5) Exit                - Exit the launcher
 echo.
 echo Note: All invoice processing, parts management, and database operations
 echo are available through the interactive application (option 1).
@@ -348,60 +361,56 @@ goto :eof
 :show_help
 echo %INFO_PREFIX% Displaying help and documentation...
 
-echo ╔═════════════════════════════════════════════════════════════════════════════════╗
-echo ║                              HELP ^& DOCUMENTATION                               ║
-echo ╚═════════════════════════════════════════════════════════════════════════════════╝
-echo.
-
-echo OVERVIEW
-echo The Clarity Invoice Validator is an advanced invoice rate detection system
-echo designed to help businesses identify pricing anomalies in their invoices.
-echo.
-
-echo MAIN FEATURES
-echo • Process Invoices: Analyze PDF invoices for pricing discrepancies
-echo • Manage Parts: Maintain a database of parts with authorized prices
-echo • Database Management: Backup, restore, and maintain your data
-echo • Interactive Discovery: Automatically discover new parts from invoices
-echo.
-
-echo GETTING STARTED
-echo 1. First time users should run 'Setup' to install and configure the system
-echo 2. Launch the interactive application to access all features
-echo 3. Use the guided workflows for invoice processing and parts management
-echo 4. Review generated reports in CSV format (can be opened in Excel)
-echo.
-
-echo WORKFLOW TIPS
-echo • Start with a small batch of invoices to test the system
-echo • Use interactive discovery to build your parts database quickly
-echo • Regular backups are automatically configured but can be run manually
-echo • Reports are saved in the project directory and can be opened in Excel
-echo.
-
-echo TROUBLESHOOTING
-echo • If processing fails, check that PDF files are readable and not encrypted
-echo • Ensure Python 3.8+ and UV package manager are installed
-echo • Use 'Setup ^> Verify system status' to check for issues
-echo • Database backups are created automatically before major operations
-echo.
-
-echo SUPPORT
-echo • Documentation: Check the docs/ folder in the project directory
-echo • User Manual: docs/USER_MANUAL.md contains detailed instructions
-echo • Contact: marcus@claritybusinesssolutions.ca
-echo • GitHub: https://github.com/Nuosis/invoice_line_cost_detection
-echo.
-
-if exist "%PROJECT_DIR%" (
-    echo QUICK COMMANDS
-    echo You can also run commands directly from the project directory:
-    echo • cd %PROJECT_DIR%
-    echo • uv run invoice-checker status          # Check system status
-    echo • uv run invoice-checker parts list      # List all parts
-    echo • uv run invoice-checker --help          # Show CLI help
+REM Check if USER_MANUAL.md exists and display it
+if exist "docs\USER_MANUAL.md" (
+    echo ╔═════════════════════════════════════════════════════════════════════════════════╗
+    echo ║                                USER MANUAL                                      ║
+    echo ╚═════════════════════════════════════════════════════════════════════════════════╝
     echo.
+    echo Navigation: Use Space/Enter to scroll down, 'q' to exit.
+    echo.
+    pause
+    
+    REM Display the manual with pagination
+    more "docs\USER_MANUAL.md"
+) else if exist "%PROJECT_DIR%\docs\USER_MANUAL.md" (
+    echo ╔═════════════════════════════════════════════════════════════════════════════════╗
+    echo ║                                USER MANUAL                                      ║
+    echo ╚═════════════════════════════════════════════════════════════════════════════════╝
+    echo.
+    echo Navigation: Use Space/Enter to scroll down, 'q' to exit.
+    echo.
+    pause
+    
+    REM Display the manual with pagination
+    more "%PROJECT_DIR%\docs\USER_MANUAL.md"
+) else (
+    REM Fallback to basic help if manual not found
+    echo ╔═════════════════════════════════════════════════════════════════════════════════╗
+    echo ║                              HELP ^& DOCUMENTATION                               ║
+    echo ╚═════════════════════════════════════════════════════════════════════════════════╝
+    echo.
+    
+    echo %WARNING_PREFIX% User manual not found. Displaying basic help...
+    echo.
+    
+    echo OVERVIEW
+    echo The Clarity Invoice Validator is an advanced invoice rate detection system
+    echo designed to help businesses identify pricing anomalies in their invoices.
+    echo.
+    
+    echo GETTING STARTED
+    echo 1. First time users should run 'Setup' to install and configure the system
+    echo 2. Launch the interactive application to access all features
+    echo 3. Use the guided workflows for invoice processing and parts management
+    echo 4. Review generated reports in CSV format (can be opened in Excel)
+    echo.
+    
+    echo SUPPORT
+    echo • Contact: marcus@claritybusinesssolutions.ca
+    echo • GitHub: https://github.com/Nuosis/invoice_line_cost_detection
+    echo.
+    
+    pause
 )
-
-pause
 goto :eof
