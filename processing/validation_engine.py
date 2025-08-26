@@ -77,7 +77,7 @@ class ValidationEngine:
         self.config = config or ValidationConfiguration()
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         
-        # Always initialize discovery service - discovery always happens
+        # Always initialize discovery service - interactive discovery always enabled
         self.discovery_service = SimplePartDiscoveryService(db_manager)
     
     def validate_invoice_json(self, extraction_json: Dict[str, Any]) -> Dict[str, Any]:

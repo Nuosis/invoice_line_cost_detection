@@ -171,8 +171,8 @@ class TestSingleFileProcessingIntegration(unittest.TestCase):
     
     @patch('cli.commands.invoice_commands._execute_validation_workflow')
     @patch('cli.commands.invoice_commands._create_validation_config')
-    def test_process_single_file_with_interactive_mode(self, mock_create_config, mock_execute_workflow):
-        """Test processing a single file with interactive discovery enabled."""
+    def test_process_single_file_always_interactive(self, mock_create_config, mock_execute_workflow):
+        """Test processing a single file (interactive discovery always enabled)."""
         # Setup mocks
         mock_config = Mock()
         mock_create_config.return_value = mock_config
@@ -186,26 +186,21 @@ class TestSingleFileProcessingIntegration(unittest.TestCase):
         }
         mock_execute_workflow.return_value = mock_results
         
-        # Test processing with interactive mode
+        # Test processing (interactive discovery always enabled)
         result = _process_invoices(
             input_path=self.test_pdf,
             output_path=self.output_file,
             output_format='csv',
             validation_mode='parts_based',
             threshold=Decimal('0.30'),
-            interactive=True,
+            interactive=True,  # This parameter is now ignored but kept for compatibility
             collect_unknown=False,
             session_id='test-session-interactive',
             db_manager=self.mock_db_manager
         )
         
-        # Verify interactive mode was passed through
+        # Verify workflow was called (interactive discovery is always enabled)
         mock_execute_workflow.assert_called_once()
-        args, kwargs = mock_execute_workflow.call_args
-        interactive_param = kwargs.get('interactive', False)
-        if not interactive_param and len(args) > 2:
-            interactive_param = args[2]
-        self.assertTrue(interactive_param)
         
         # Verify results
         self.assertEqual(result['files_processed'], 1)

@@ -210,7 +210,6 @@ class TestStatusCommand(unittest.TestCase):
         required_configs = [
             'validation_mode',
             'default_output_format',
-            'interactive_discovery',
             'database_version'
         ]
         

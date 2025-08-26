@@ -52,7 +52,6 @@ def _load_config_values(db_manager):
     # Configuration keys to load
     config_keys = [
         'default_output_format',
-        'interactive_discovery',
         'validation_mode',
         'price_tolerance',
         'default_invoice_location',
@@ -69,7 +68,6 @@ def _load_config_values(db_manager):
             # Fallback to hardcoded defaults if config not found
             defaults = {
                 'default_output_format': 'txt',
-                'interactive_discovery': True,
                 'validation_mode': 'parts_based',
                 'price_tolerance': 0.001,
                 'default_invoice_location': 'desktop/invoices/',
@@ -154,8 +152,6 @@ def extract_parts(ctx, input_path, output):
               help='Output report file path (defaults to configured location or documents/ directory)')
 @click.option('--format', '-f', type=OUTPUT_FORMAT, default=None,
               help='Output format (csv, txt, json) - uses config default if not specified')
-@click.option('--interactive', '-i', is_flag=True, default=None,
-              help='Enable interactive part discovery - uses config default if not specified')
 @click.option('--collect-unknown', is_flag=True,
               help='Collect unknown parts for later review')
 @click.option('--session-id', type=str,
@@ -167,7 +163,7 @@ def extract_parts(ctx, input_path, output):
 @click.option('--no-auto-open', is_flag=True,
               help='Disable automatic opening of generated reports')
 @pass_context
-def process(ctx, input_path, output, format, interactive, collect_unknown,
+def process(ctx, input_path, output, format, collect_unknown,
            session_id, validation_mode, threshold, no_auto_open):
     """
     Process invoices with parts-based validation (primary command).
@@ -183,8 +179,8 @@ def process(ctx, input_path, output, format, interactive, collect_unknown,
         # Process a single PDF file (saves to documents/ and auto-opens)
         invoice-checker process invoice.pdf
         
-        # Process a folder with interactive discovery
-        invoice-checker process ./invoices --interactive
+        # Process a folder (interactive discovery always enabled)
+        invoice-checker process ./invoices
         
         # Process without auto-opening reports
         invoice-checker process ./invoices --no-auto-open
@@ -206,9 +202,8 @@ def process(ctx, input_path, output, format, interactive, collect_unknown,
         if format is None:
             format = config_values.get('default_output_format', 'txt')
         
-        if interactive is None:
-            # Use interactive_discovery setting; no auto-add behavior supported
-            interactive = config_values.get('interactive_discovery', True)
+        # Interactive discovery is always enabled
+        interactive = True
         
         if validation_mode is None:
             validation_mode = config_values.get('validation_mode', 'parts_based')
@@ -558,7 +553,7 @@ def run_quick_processing(ctx, input_path=None, auto_open=True):
         
         print_info(f"📊 Output format: {output_format}")
         print_info(f"🔍 Validation mode: {validation_mode}")
-        print_info(f"🔧 Part discovery: enabled (no auto-add; unknown parts will be recorded)")
+        print_info(f"🔧 Part discovery: always enabled (interactive prompts for unknown parts)")
         print()
         
         # Process invoices with non-interactive discovery (no prompts; no auto-add)
@@ -572,7 +567,7 @@ def run_quick_processing(ctx, input_path=None, auto_open=True):
             output_format=output_format,
             validation_mode=validation_mode,
             threshold=threshold,
-            interactive=False,  # Non-interactive: unknown parts are recorded in the report (no auto-add)
+            interactive=True,  # Interactive discovery always enabled
             collect_unknown=False,
             session_id=session_id,
             db_manager=db_manager,
@@ -595,7 +590,7 @@ def run_quick_processing(ctx, input_path=None, auto_open=True):
             print_warning(f"   • Files failed: {files_failed}")
         print_info(f"   • Anomalies found: {anomalies_found}")
         if unknown_parts > 0:
-            print_info(f"   • New parts discovered: {unknown_parts} (not added automatically)")
+            print_info(f"   • New parts discovered: {unknown_parts} (interactive prompts shown)")
         
         print_info(f"📁 Reports saved to: {output_path}")
         if auto_open:
@@ -604,7 +599,7 @@ def run_quick_processing(ctx, input_path=None, auto_open=True):
         # Show discovered parts summary if any
         if unknown_parts > 0:
             print()
-            print_info("📝 Unknown parts were found and recorded in the report. They were not added automatically.")
+            print_info("📝 Unknown parts were found and handled through interactive prompts.")
         
     except UserCancelledError:
         raise
@@ -714,13 +709,9 @@ def run_interactive_processing(ctx, preset=None, save_preset=None):
         # Step 4: Configure discovery options
         print_info("Step 4: Configure part discovery")
         
-        # Use configured default for interactive discovery
-        default_interactive = config_values.get('interactive_discovery', True)
-        print_info(f"Default interactive discovery from config: {default_interactive}")
-        
-        interactive_discovery = click.confirm(
-            "Enable interactive part discovery?", default=default_interactive
-        )
+        # Interactive discovery is always enabled
+        print_info("Interactive part discovery: always enabled")
+        interactive_discovery = True
         
         # Step 5: Process invoices
         print_info("Step 5: Processing invoices...")
@@ -871,10 +862,7 @@ def _create_validation_config(validation_mode: str,
             # Ignore db issues; tests only check that we attempted to consult
             pass
 
-        try:
-            config.interactive_discovery = bool(interactive)
-        except Exception:
-            pass
+        # Interactive discovery is always enabled, collect_unknown still configurable
         try:
             config.batch_collect_unknown_parts = bool(collect_unknown)
         except Exception:
@@ -1129,8 +1117,7 @@ def _process_batch(folders: List[Path], output_dir: Path, parallel: bool,
             config_values = _load_config_values(db_manager)
             
             # Use existing _process_invoices function with config defaults
-            # Interactive discovery driven solely by configuration (no auto-add support)
-            interactive_discovery = config_values.get('interactive_discovery', True)
+            # Interactive discovery is always enabled
             
             result = _process_invoices(
                 input_path=folder_path,
@@ -1138,7 +1125,7 @@ def _process_batch(folders: List[Path], output_dir: Path, parallel: bool,
                 output_format=config_values.get('default_output_format', 'csv'),
                 validation_mode=config_values.get('validation_mode', 'parts_based'),
                 threshold=Decimal(str(config_values.get('price_tolerance', '0.001'))),
-                interactive=interactive_discovery,  # Enable user feedback for new parts
+                interactive=True,  # Interactive discovery always enabled
                 collect_unknown=False,
                 session_id=session_id,
                 db_manager=db_manager
@@ -1256,10 +1243,9 @@ def _collect_unknown_parts(input_path: Path, output_path: Path,
             if total > 1:  # Only show progress for batch processing
                 print_info(f"[{current}/{total}] {message}")
         
-        # Create InvoiceProcessor in non-interactive mode for collection
+        # Create InvoiceProcessor for collection (interactive mode always enabled)
         processor = InvoiceProcessor(
             database_manager=db_manager,
-            interactive_mode=False,  # Don't prompt user during collection
             progress_callback=progress_callback
         )
         

@@ -5,7 +5,7 @@ A modern, user-friendly CLI tool for detecting overcharges in PDF invoices using
 ## Features
 
 - **Parts Database Integration**: Validate invoice line items against known parts database
-- **Interactive Parts Discovery**: Discover and add new parts interactively
+- **Interactive Parts Discovery**: Always enabled - discover and add new parts interactively
 - **Batch Processing**: Process entire folders of PDF invoices at once
 - **Advanced Validation**: Multiple validation strategies beyond simple threshold checking
 - **Multiple Output Formats**: Generate reports in CSV or TXT format
@@ -117,8 +117,8 @@ uv run invoice-checker status
 # Process invoices with parts-based validation (saves to documents/ and auto-opens)
 uv run invoice-checker invoice process /path/to/invoices
 
-# Process with interactive discovery
-uv run invoice-checker invoice process /path/to/invoices --interactive
+# Process invoices (interactive discovery always enabled)
+uv run invoice-checker invoice process /path/to/invoices
 
 # Process without auto-opening reports
 uv run invoice-checker invoice process /path/to/invoices --no-auto-open
@@ -187,7 +187,7 @@ uv run invoice-checker config setup
 **Common configuration keys:**
 - `validation_mode`: How invoices are validated (`parts_based` or `threshold_based`)
 - `default_output_format`: Default report format (`txt`, `csv`, or `json`)
-- `interactive_discovery`: Prompt user to add unknown parts interactively
+- `interactive_discovery`: Always enabled - prompts user to add unknown parts interactively
 - `price_tolerance`: Tolerance for price comparisons (e.g., `0.001`)
 
 For a full list of available options and their descriptions, use `uv run invoice-checker config list --format table` or `--format json`.
@@ -203,8 +203,8 @@ uv run invoice-checker status
 # Process all PDFs in the 'invoices' folder (saves to documents/ and auto-opens)
 uv run invoice-checker invoice process ./docs/invoices
 
-# Process with interactive parts discovery
-uv run invoice-checker invoice process ./invoices --interactive
+# Process invoices (interactive discovery always enabled)
+uv run invoice-checker invoice process ./invoices
 
 # Process without auto-opening reports
 uv run invoice-checker invoice process ./invoices --no-auto-open

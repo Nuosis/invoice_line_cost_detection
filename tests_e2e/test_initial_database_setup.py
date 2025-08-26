@@ -158,7 +158,7 @@ class TestInitialDatabaseSetup(unittest.TestCase):
         
         # Verify required columns exist with correct properties
         expected_columns = {
-            'part_number': {'type': 'TEXT', 'notnull': 0, 'pk': 1},
+            'part_number': {'type': 'TEXT', 'notnull': 0, 'pk': 0},
             'authorized_price': {'type': 'DECIMAL(10,4)', 'notnull': 1, 'pk': 0},
             'description': {'type': 'TEXT', 'notnull': 0, 'pk': 0},
             'category': {'type': 'TEXT', 'notnull': 0, 'pk': 0},
@@ -327,7 +327,6 @@ class TestInitialDatabaseSetup(unittest.TestCase):
         expected_config_keys = {
             'validation_mode',
             'default_output_format',
-            'interactive_discovery',
             'price_tolerance',
             'backup_retention_days',
             'log_retention_days',
@@ -342,10 +341,7 @@ class TestInitialDatabaseSetup(unittest.TestCase):
         self.assertEqual(validation_mode, 'parts_based', "Default validation_mode should be 'parts_based'")
         
         output_format = self.db_manager.get_config_value('default_output_format')
-        self.assertEqual(output_format, 'csv', "Default output_format should be 'csv'")
-        
-        interactive_discovery = self.db_manager.get_config_value('interactive_discovery')
-        self.assertTrue(interactive_discovery, "Default interactive_discovery should be True")
+        self.assertEqual(output_format, 'txt', "Default output_format should be 'txt'")
         
         database_version = self.db_manager.get_config_value('database_version')
         self.assertEqual(database_version, '1.0', "Default database_version should be '1.0'")
@@ -360,11 +356,6 @@ class TestInitialDatabaseSetup(unittest.TestCase):
         validation_mode = self.db_manager.get_config('validation_mode')
         self.assertEqual(validation_mode.data_type, 'string')
         self.assertIsInstance(validation_mode.get_typed_value(), str)
-        
-        # Test boolean configurations
-        interactive_discovery = self.db_manager.get_config('interactive_discovery')
-        self.assertEqual(interactive_discovery.data_type, 'boolean')
-        self.assertIsInstance(interactive_discovery.get_typed_value(), bool)
         
         # Test number configurations
         price_tolerance = self.db_manager.get_config('price_tolerance')

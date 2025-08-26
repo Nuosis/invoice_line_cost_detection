@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.47] - 2025-08-25
+
+### Changes
+
+Modified files:
+  - Modified: README.md
+  - Modified: cli/commands/invoice_commands.py
+  - Modified: cli/main.py
+  - Modified: database/models.py
+  - Modified: processing/invoice_processor.py
+  - Modified: processing/validation_engine.py
+  - Modified: tests_e2e/test_discovery_management.py
+  - Modified: tests_e2e/test_initial_database_setup.py
+  - Modified: tests_e2e/test_status_command.py
+  - Modified: tests_journey/JOURNEY_TEST_PLAN.md
+  - Modified: tests_journey/SUBTEST_VERIFICATION_STATUS.md
+  - Modified: tests_journey/__init__.py
+  - Modified: tests_journey/roo.md
+  - Modified: tests_journey/run_tests.py
+  - Modified: tests_journey/test_choice_selection_prompts.py
+  - Modified: tests_journey/test_confirmation_dialogs.py
+  - Modified: tests_journey/test_error_recovery_journeys.py
+  - Modified: tests_journey/test_interactive_command_workflows.py
+  - Modified: tests_journey/test_multi_step_workflow_state.py
+  - Modified: tests_journey/test_output_configuration_prompts.py
+  - Modified: tests_journey/test_parts_discovery_prompts.py
+  - Modified: tests_journey/test_path_input_prompts.py
+  - Modified: tests_journey/test_user_cancellation_flows.py
+  - Modified: tests_journey/test_validation_mode_selection.py
+  - Modified: tests_unit/test_invoice_processing_refactored.py
+  - Modified: tests_unit/test_single_file_processing.py
+
+**Deployment:** 2025-08-25 19:37:42 PDT
+
+
 ## [1.0.23] - 2025-08-20
 
 ### Removed

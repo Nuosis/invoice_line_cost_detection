@@ -291,9 +291,9 @@ class TestDiscoveryManagement(unittest.TestCase):
         self.assertEqual(discovered001['invoice_number'], "INV001")
         self.assertEqual(discovered001['action_taken'], "discovered")
     
-    def test_discovery_review_interactive_mode(self):
+    def test_discovery_review_always_interactive(self):
         """
-        Test discovery review command in interactive mode.
+        Test discovery review command (always interactive).
         """
         # Initialize database manager and setup test data
         self.db_manager = DatabaseManager(str(self.db_path))
@@ -302,7 +302,7 @@ class TestDiscoveryManagement(unittest.TestCase):
         # Initialize discovery service
         self.discovery_service = PartDiscoveryService(self.db_manager)
         
-        # Get unknown parts for interactive review (simulates: discovery review --interactive)
+        # Get unknown parts for interactive review (always interactive)
         unknown_parts = self.discovery_service.get_unknown_parts_for_review("session_001")
         
         # Verify unknown parts structure

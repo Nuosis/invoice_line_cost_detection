@@ -127,7 +127,7 @@ def run_main_interactive_menu(ctx):
             click.echo("")
             
             menu_options = [
-                "Process Invoices    - Run interactive invoice processing with discovery",
+                "Configure and Process - Run interactive invoice processing with discovery",
                 "Manage Parts        - Add, update, import/export parts database",
                 "Manage Database     - Backup, restore, and maintain database",
                 "Setup / Configuration - System setup and configuration options",

@@ -136,7 +136,7 @@ class TestCreateValidationConfig:
         )
         
         assert isinstance(config, ValidationConfiguration)
-        assert config.interactive_discovery is False
+        # interactive_discovery attribute has been removed from the system
         assert config.batch_collect_unknown_parts is True
         # Should use database configuration, not threshold
         self.mock_db_manager.get_config_value.assert_called()
@@ -152,12 +152,12 @@ class TestCreateValidationConfig:
                 db_manager=self.mock_db_manager
             )
             
-            # For threshold_based mode, interactive_discovery should be False regardless of parameter
+            # For threshold_based mode, batch_collect_unknown_parts should be False regardless of parameter
             if mode == 'threshold_based':
-                assert config.interactive_discovery is False
+                # interactive_discovery attribute has been removed from the system
                 assert config.batch_collect_unknown_parts is False
             else:  # parts_based mode
-                assert config.interactive_discovery is True
+                # interactive_discovery attribute has been removed from the system
                 assert config.batch_collect_unknown_parts is True
 
 

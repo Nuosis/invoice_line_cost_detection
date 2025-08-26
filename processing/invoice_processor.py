@@ -164,9 +164,8 @@ class InvoiceProcessor:
     handling both single file and directory processing with interactive mode support.
     """
     
-    def __init__(self, 
+    def __init__(self,
                  database_manager: DatabaseManager,
-                 interactive_mode: bool = False,
                  progress_callback: Optional[Callable[[int, int, str], None]] = None,
                  logger: Optional[logging.Logger] = None):
         """
@@ -174,19 +173,17 @@ class InvoiceProcessor:
         
         Args:
             database_manager: Database manager for parts operations
-            interactive_mode: Enable human-in-the-loop for unknown parts
             progress_callback: Callback function for progress updates (current, total, message)
             logger: Optional logger instance
         """
         self.db_manager = database_manager
-        self.interactive_mode = interactive_mode
         self.progress_callback = progress_callback
         self.logger = logger or self._create_default_logger()
         
-        # Initialize processing components
+        # Initialize processing components - interactive mode is always enabled
         self.pdf_processor = PDFProcessor(self.logger)
-        self.validation_engine = ValidationEngine(self.db_manager, self.interactive_mode)
-        self.discovery_service = SimplePartDiscoveryService(self.db_manager, self.interactive_mode)
+        self.validation_engine = ValidationEngine(self.db_manager)
+        self.discovery_service = SimplePartDiscoveryService(self.db_manager)
         self.report_generator = SimpleReportGenerator()
         
         # Processing statistics
@@ -369,14 +366,14 @@ class InvoiceProcessor:
         
         return batch_result
     
-    def process_with_discovery(self, 
+    def process_with_discovery(self,
                              input_path: Union[str, Path],
                              output_path: Optional[Union[str, Path]] = None) -> Union[ProcessingResult, BatchProcessingResult]:
         """
-        Process with interactive part discovery enabled.
+        Process with interactive part discovery (always enabled).
         
-        This is a convenience method that enables interactive mode and processes
-        either a single file or directory based on the input path.
+        This is a convenience method that processes either a single file or
+        directory based on the input path. Interactive discovery is always enabled.
         
         Args:
             input_path: Path to PDF file or directory
@@ -385,29 +382,14 @@ class InvoiceProcessor:
         Returns:
             ProcessingResult for single file or BatchProcessingResult for directory
         """
-        # Temporarily enable interactive mode
-        original_interactive_mode = self.interactive_mode
-        self.interactive_mode = True
+        input_path = Path(input_path)
         
-        # Update discovery service to interactive mode
-        self.discovery_service = SimplePartDiscoveryService(self.db_manager, True)
-        self.validation_engine = ValidationEngine(self.db_manager, True)
-        
-        try:
-            input_path = Path(input_path)
-            
-            if input_path.is_file():
-                return self.process_single_invoice(input_path, output_path)
-            elif input_path.is_dir():
-                return self.process_directory(input_path, output_path)
-            else:
-                raise ValueError(f"Input path does not exist: {input_path}")
-        
-        finally:
-            # Restore original interactive mode
-            self.interactive_mode = original_interactive_mode
-            self.discovery_service = SimplePartDiscoveryService(self.db_manager, original_interactive_mode)
-            self.validation_engine = ValidationEngine(self.db_manager, original_interactive_mode)
+        if input_path.is_file():
+            return self.process_single_invoice(input_path, output_path)
+        elif input_path.is_dir():
+            return self.process_directory(input_path, output_path)
+        else:
+            raise ValueError(f"Input path does not exist: {input_path}")
     
     def generate_reports(self,
                         validation_json: Dict[str, Any],
@@ -678,31 +660,27 @@ class InvoiceProcessor:
 
 
 # Convenience functions for CLI integration
-def create_invoice_processor(database_manager: DatabaseManager, 
-                           interactive_mode: bool = False,
+def create_invoice_processor(database_manager: DatabaseManager,
                            progress_callback: Optional[Callable[[int, int, str], None]] = None) -> InvoiceProcessor:
     """
     Create an InvoiceProcessor instance with standard configuration.
     
     Args:
         database_manager: Database manager instance
-        interactive_mode: Enable interactive part discovery
         progress_callback: Optional progress callback for CLI
         
     Returns:
-        Configured InvoiceProcessor instance
+        Configured InvoiceProcessor instance (interactive mode always enabled)
     """
     return InvoiceProcessor(
         database_manager=database_manager,
-        interactive_mode=interactive_mode,
         progress_callback=progress_callback
     )
 
 
 def process_single_file(pdf_path: Union[str, Path],
                        database_manager: DatabaseManager,
-                       output_path: Optional[Union[str, Path]] = None,
-                       interactive_mode: bool = False) -> ProcessingResult:
+                       output_path: Optional[Union[str, Path]] = None) -> ProcessingResult:
     """
     Convenience function to process a single PDF file.
     
@@ -710,19 +688,17 @@ def process_single_file(pdf_path: Union[str, Path],
         pdf_path: Path to PDF file
         database_manager: Database manager instance
         output_path: Optional output directory
-        interactive_mode: Enable interactive part discovery
         
     Returns:
-        ProcessingResult with processing details
+        ProcessingResult with processing details (interactive mode always enabled)
     """
-    processor = create_invoice_processor(database_manager, interactive_mode)
+    processor = create_invoice_processor(database_manager)
     return processor.process_single_invoice(pdf_path, output_path)
 
 
 def process_directory_batch(input_dir: Union[str, Path],
                           database_manager: DatabaseManager,
                           output_path: Optional[Union[str, Path]] = None,
-                          interactive_mode: bool = False,
                           recursive: bool = True,
                           progress_callback: Optional[Callable[[int, int, str], None]] = None) -> BatchProcessingResult:
     """
@@ -732,12 +708,11 @@ def process_directory_batch(input_dir: Union[str, Path],
         input_dir: Directory containing PDF files
         database_manager: Database manager instance
         output_path: Optional output directory
-        interactive_mode: Enable interactive part discovery
         recursive: Search subdirectories
         progress_callback: Optional progress callback for CLI
         
     Returns:
-        BatchProcessingResult with aggregated results
+        BatchProcessingResult with aggregated results (interactive mode always enabled)
     """
-    processor = create_invoice_processor(database_manager, interactive_mode, progress_callback)
+    processor = create_invoice_processor(database_manager, progress_callback)
     return processor.process_directory(input_dir, output_path, recursive)
