@@ -69,7 +69,7 @@ def _verify_backup_integrity(backup_path: Path, db_manager) -> bool:
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
             tables = {row[0] for row in cursor.fetchall()}
             
-            expected_tables = {'parts', 'configuration', 'part_discovery_log'}
+            expected_tables = {'parts', 'config', 'part_discovery_log'}
             missing_tables = expected_tables - tables
             if missing_tables:
                 raise DatabaseError(f"Backup missing required tables: {missing_tables}")
@@ -94,7 +94,7 @@ def _verify_backup_integrity(backup_path: Path, db_manager) -> bool:
                 cursor.execute("SELECT COUNT(*) FROM parts")
                 parts_count = cursor.fetchone()[0]
                 
-                cursor.execute("SELECT COUNT(*) FROM configuration")
+                cursor.execute("SELECT COUNT(*) FROM config")
                 config_count = cursor.fetchone()[0]
                 
                 logger.info(f"Backup verification: {parts_count} parts, {config_count} config entries")
