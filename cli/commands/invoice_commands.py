@@ -498,7 +498,6 @@ def run_quick_processing(ctx, input_path=None, auto_open=True):
             if default_location and default_location.strip():
                 # Expand desktop path if needed
                 if default_location.startswith('desktop/'):
-                    from pathlib import Path
                     desktop_path = Path.home() / 'Desktop'
                     default_location = str(desktop_path / default_location[8:])  # Remove 'desktop/' prefix
                 
@@ -630,7 +629,6 @@ def run_interactive_processing(ctx, preset=None, save_preset=None):
         if default_location and default_location.strip():
             # Expand desktop path if needed
             if default_location.startswith('desktop/'):
-                from pathlib import Path
                 desktop_path = Path.home() / 'Desktop'
                 default_location = str(desktop_path / default_location[8:])  # Remove 'desktop/' prefix
             
@@ -1015,42 +1013,83 @@ def _process_invoices(input_path: Path, output_path: Path, output_format: str,
                      validation_mode: str, threshold: Decimal, interactive: bool,
                      collect_unknown: bool, session_id: str, db_manager, auto_open: bool = True) -> Dict[str, Any]:
     """
-    Core invoice processing logic using helper orchestration functions.
+    Core invoice processing logic using InvoiceProcessor.
 
     Steps:
     1) Discover PDFs
-    2) Build validation configuration
-    3) Execute validation workflow (single/batch)
-    4) Convert workflow summary into legacy result dictionary
+    2) Process using InvoiceProcessor
+    3) Generate reports and return results
     """
     print_info("Starting invoice processing...")
 
     try:
+        # Import InvoiceProcessor
+        from processing.invoice_processor import InvoiceProcessor
+        
         # 1) Discover PDFs
         pdf_files = _discover_pdf_files(input_path)
-
-        # 2) Build validation configuration
-        config = _create_validation_config(
-            validation_mode=validation_mode,
-            threshold=threshold,
-            interactive=interactive,
-            collect_unknown=collect_unknown,
-            db_manager=db_manager
+        
+        # 2) Create progress callback for CLI feedback
+        def progress_callback(current: int, total: int, message: str):
+            if total > 1:  # Only show progress for batch processing
+                print_info(f"[{current}/{total}] {message}")
+        
+        # 3) Create InvoiceProcessor
+        processor = InvoiceProcessor(
+            database_manager=db_manager,
+            progress_callback=progress_callback
         )
-
-        # 3) Execute workflow
-        summary = _execute_validation_workflow(
-            pdf_files=pdf_files,
-            config=config,
-            db_manager=db_manager,
-            interactive=interactive,
-            output_path=output_path if output_path else (input_path if input_path.is_dir() else input_path.parent),
-            output_format=output_format
-        )
-
-        # 4) Legacy results mapping
-        results = _generate_processing_results(summary, output_path)
-        return results
+        
+        # 4) Process invoices
+        if len(pdf_files) == 1:
+            # Single file processing
+            pdf_file = pdf_files[0]
+            result = processor.process_single_invoice(pdf_file, output_path if output_path.is_dir() else output_path.parent)
+            
+            # Generate reports if processing was successful
+            if result.success and result.validation_json:
+                reports = processor.generate_reports(
+                    result.validation_json,
+                    output_path if output_path.is_dir() else output_path.parent,
+                    f"{pdf_file.stem}_validation",
+                    auto_open=auto_open,
+                    preferred_format=output_format
+                )
+            
+            # Convert to legacy format
+            stats = {
+                'files_processed': 1 if result.success else 0,
+                'files_failed': 0 if result.success else 1,
+                'anomalies_found': result.validation_errors,
+                'unknown_parts': result.unknown_parts_found,
+                'total_overcharge': Decimal('0.00'),
+                'report_file': str(output_path),
+                'critical_anomalies': 0,
+                'warning_anomalies': result.validation_errors,
+                'processing_time': result.processing_time
+            }
+            
+        else:
+            # Directory/batch processing
+            batch_result = processor.process_directory(
+                input_path,
+                output_path if output_path.is_dir() else output_path.parent
+            )
+            
+            # Convert to legacy format
+            stats = {
+                'files_processed': batch_result.successful_files,
+                'files_failed': batch_result.failed_files,
+                'anomalies_found': batch_result.total_validation_errors,
+                'unknown_parts': batch_result.total_unknown_parts,
+                'total_overcharge': Decimal('0.00'),
+                'report_file': str(output_path),
+                'critical_anomalies': 0,
+                'warning_anomalies': batch_result.total_validation_errors,
+                'processing_time': batch_result.total_processing_time
+            }
+        
+        return stats
 
     except ProcessingError as e:
         # Wrap ProcessingError with the expected message format

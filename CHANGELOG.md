@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.52] - 2025-08-25
+
+### Changes
+
+Modified files:
+  - Modified: cli/commands/invoice_commands.py
+
+**Deployment:** 2025-08-25 20:07:47 PDT
+
+
 ## [1.0.51] - 2025-08-25
 
 ### Changes
