@@ -939,12 +939,12 @@ def _interactive_update_part(ctx):
         category = click.prompt("New category (optional)", default="", type=str)
         notes = click.prompt("New notes (optional)", default="", type=str)
         
-        # Status change options
-        activate = click.confirm("Activate part?", default=False)
-        deactivate = click.confirm("Deactivate part?", default=False)
+        # Status change options - simplified to single activate prompt with Y default
+        activate = click.confirm("Activate part?", default=True)
+        deactivate = not activate  # If not activating, then deactivating
         
-        # Call the update command
-        ctx.invoke(update,
+        # Call the update command using Click context, not CLIContext
+        click.get_current_context().invoke(update,
                   part_number=part_number,
                   price=float(price) if price.strip() else None,
                   description=description or None,

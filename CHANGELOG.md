@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.48] - 2025-08-25
+
+### Changes
+
+Modified files:
+  - Modified: cli/commands/parts_commands.py
+
+**Deployment:** 2025-08-25 19:43:09 PDT
+
+
 ## [1.0.47] - 2025-08-25
 
 ### Changes
