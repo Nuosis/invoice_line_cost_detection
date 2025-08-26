@@ -969,8 +969,8 @@ def _interactive_import_parts(ctx):
         update_existing = click.confirm("Update existing parts?", default=False)
         dry_run = click.confirm("Perform dry run first?", default=True)
         
-        # Call the import command
-        ctx.invoke(import_parts,
+        # Call the import command using Click context
+        click.get_current_context().invoke(import_parts,
                   input_file=input_file,
                   update_existing=update_existing,
                   dry_run=dry_run,
