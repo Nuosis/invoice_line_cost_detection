@@ -9,7 +9,6 @@ This module implements configuration-related commands including:
 """
 
 import logging
-from typing import Optional, Any
 
 import click
 
@@ -77,7 +76,7 @@ def get(ctx, key, format):
         
     except ValidationError as e:
         raise CLIError(f"Validation error: {e}")
-    except ConfigurationError as e:
+    except ConfigurationError:
         raise CLIError(f"Configuration not found: {key}")
     except DatabaseError as e:
         raise CLIError(f"Database error: {e}")
@@ -149,7 +148,7 @@ def set(ctx, key, value, type, description, category):
             raise ValidationError(f"Invalid value for type {type}: {e}")
         
         # Show what will be set
-        print_info(f"Setting configuration:")
+        print_info("Setting configuration:")
         print_info(f"  Key: {key}")
         print_info(f"  Value: {config.get_typed_value()}")
         print_info(f"  Type: {type}")
@@ -161,11 +160,11 @@ def set(ctx, key, value, type, description, category):
         try:
             existing_config = db_manager.get_config(key)
             action = "update"
-            print_info(f"This will update the existing configuration.")
+            print_info("This will update the existing configuration.")
             print_info(f"Current value: {existing_config.get_typed_value()}")
         except ConfigurationError:
             action = "create"
-            print_info(f"This will create a new configuration.")
+            print_info("This will create a new configuration.")
         
         if not prompt_for_confirmation(f"Proceed to {action} this configuration?", default=True):
             print_info("Configuration change cancelled.")
@@ -447,7 +446,6 @@ def setup(ctx, interactive):
             config_keys = [
                 'validation_mode',
                 'default_output_format',
-                'auto_add_discovered_parts',
                 'price_tolerance'
             ]
             
@@ -468,7 +466,7 @@ def setup(ctx, interactive):
             default_idx = validation_modes.index(current_mode) if current_mode in validation_modes else 0
             
             mode_choice = click.prompt(
-                f"Select validation mode [1=parts_based, 2=threshold_based]",
+                "Select validation mode [1=parts_based, 2=threshold_based]",
                 type=click.IntRange(1, 2),
                 default=default_idx + 1
             )
@@ -486,29 +484,14 @@ def setup(ctx, interactive):
             default_idx = output_formats.index(current_format) if current_format in output_formats else 0
             
             format_choice = click.prompt(
-                f"Select output format [1=txt, 2=csv, 3=json]",
+                "Select output format [1=txt, 2=csv, 3=json]",
                 type=click.IntRange(1, 3),
                 default=default_idx + 1
             )
             output_format = output_formats[format_choice - 1]
             
-            # Step 3: Unknown Parts Handling
-            print_info("\nStep 3: Unknown Parts Handling")
-            print_info("When unknown parts are found during processing:")
-            print_info("  • Prompt to add each part (interactive)")
-            print_info("  • Automatically add all parts (auto-add)")
-            
-            current_auto_add = current_config.get('auto_add_discovered_parts', False)
-            if isinstance(current_auto_add, str):
-                current_auto_add = current_auto_add.lower() == 'true'
-            
-            auto_add_parts = click.confirm(
-                "Automatically add discovered parts without prompting?",
-                default=current_auto_add
-            )
-            
-            # Step 4: Price Tolerance
-            print_info("\nStep 4: Price Tolerance")
+            # Step 3: Price Tolerance
+            print_info("\nStep 3: Price Tolerance")
             print_info("Set the tolerance for price comparisons (for floating point precision).")
             print_info("Recommended: 0.001 (prices within $0.001 are considered equal)")
             
@@ -527,24 +510,17 @@ def setup(ctx, interactive):
             print_info("=" * 30)
             print_info(f"Validation Mode: {validation_mode}")
             print_info(f"Output Format: {output_format}")
-            print_info(f"Auto-add Unknown Parts: {auto_add_parts}")
             print_info(f"Price Tolerance: {price_tolerance}")
             
             if not click.confirm("\nApply these settings?", default=True):
                 print_info("Setup cancelled.")
                 return
             
-            # Apply configuration - set interactive_discovery as opposite of auto_add_parts
-            interactive_discovery = not auto_add_parts
-            
+            # Apply configuration
             db_manager.set_config_value('validation_mode', validation_mode, 'string',
                                       'Validation mode: parts_based or threshold_based', 'validation')
             db_manager.set_config_value('default_output_format', output_format, 'string',
                                       'Default report output format', 'reporting')
-            db_manager.set_config_value('interactive_discovery', interactive_discovery, 'boolean',
-                                      'Enable interactive part discovery during processing', 'discovery')
-            db_manager.set_config_value('auto_add_discovered_parts', auto_add_parts, 'boolean',
-                                      'Automatically add discovered parts without user confirmation', 'discovery')
             db_manager.set_config_value('price_tolerance', price_tolerance, 'number',
                                       'Price comparison tolerance for floating point precision', 'validation')
             
@@ -558,8 +534,6 @@ def setup(ctx, interactive):
             defaults = {
                 'validation_mode': ('parts_based', 'string', 'Validation mode: parts_based or threshold_based', 'validation'),
                 'default_output_format': ('txt', 'string', 'Default report output format', 'reporting'),
-                'interactive_discovery': (True, 'boolean', 'Enable interactive part discovery during processing', 'discovery'),
-                'auto_add_discovered_parts': (False, 'boolean', 'Automatically add discovered parts without user confirmation', 'discovery'),
                 'price_tolerance': (0.001, 'number', 'Price comparison tolerance for floating point precision', 'validation')
             }
             

@@ -121,9 +121,8 @@ class DatabaseMigration:
         -- Insert initial configuration data
         INSERT OR IGNORE INTO config (key, value, data_type, description, category) VALUES
         ('validation_mode', 'parts_based', 'string', 'Validation mode: parts_based or threshold_based', 'validation'),
-        ('default_output_format', 'csv', 'string', 'Default report output format', 'reporting'),
+        ('default_output_format', 'txt', 'string', 'Default report output format', 'reporting'),
         ('interactive_discovery', 'true', 'boolean', 'Enable interactive part discovery during processing', 'discovery'),
-        ('auto_add_discovered_parts', 'false', 'boolean', 'Automatically add discovered parts without user confirmation', 'discovery'),
         ('price_tolerance', '0.001', 'number', 'Price comparison tolerance for floating point precision', 'validation'),
         ('backup_retention_days', '30', 'number', 'Number of days to retain database backups', 'maintenance'),
         ('log_retention_days', '365', 'number', 'Number of days to retain discovery log entries', 'maintenance'),

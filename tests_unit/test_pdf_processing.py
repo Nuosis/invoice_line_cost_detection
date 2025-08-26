@@ -242,6 +242,7 @@ class TestLineItem:
         """Test validation of valid line item."""
         line_item = LineItem(
             item_code="TEST001",
+            description="Test Item",
             rate=Decimal('1.50')
         )
         
@@ -253,16 +254,16 @@ class TestLineItem:
         line_item = LineItem()
         assert not line_item.is_valid()
         
-        # Missing item code
-        line_item = LineItem(rate=Decimal('1.50'))
+        # Missing description
+        line_item = LineItem(item_code="TEST001", rate=Decimal('1.50'))
         assert not line_item.is_valid()
 
         # Missing rate
-        line_item = LineItem(item_code="TEST001")
+        line_item = LineItem(item_code="TEST001", description="Test Item")
         assert not line_item.is_valid()
 
         # Valid line item
-        line_item = LineItem(item_code="TEST001", rate=Decimal('1.50'))
+        line_item = LineItem(item_code="TEST001", description="Test Item", rate=Decimal('1.50'))
         assert line_item.is_valid()
     
     def test_line_item_type_conversion(self):

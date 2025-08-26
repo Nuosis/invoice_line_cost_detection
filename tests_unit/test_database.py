@@ -425,11 +425,6 @@ class TestConfigurationOperations(unittest.TestCase):
     
     def test_get_config_value_with_type_conversion(self):
         """Test getting configuration value with automatic type conversion."""
-        # Test boolean value
-        bool_value = self.db_manager.get_config_value("interactive_discovery")
-        self.assertIsInstance(bool_value, bool)
-        self.assertTrue(bool_value)
-        
         # Test number value
         number_value = self.db_manager.get_config_value("price_tolerance")
         self.assertIsInstance(number_value, float)

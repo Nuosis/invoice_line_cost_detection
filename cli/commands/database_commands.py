@@ -1305,66 +1305,6 @@ def _show_backup_history(ctx, limit: int = 10, backup_dir: Optional[str] = None)
         raise
 
 
-def _verify_backup_integrity(backup_file: Path, db_manager) -> None:
-    """
-    Verify the integrity of a backup database file.
-    
-    Args:
-        backup_file: Path to the backup file to verify
-        db_manager: Database manager instance
-        
-    Raises:
-        DatabaseError: If backup verification fails
-    """
-    import sqlite3
-    import tempfile
-    
-    try:
-        # Check if file exists and is readable
-        if not backup_file.exists():
-            raise DatabaseError(f"Backup file does not exist: {backup_file}")
-        
-        if backup_file.stat().st_size == 0:
-            raise DatabaseError(f"Backup file is empty: {backup_file}")
-        
-        # Try to open the database file
-        with sqlite3.connect(str(backup_file)) as conn:
-            # Enable foreign key constraints
-            conn.execute("PRAGMA foreign_keys = ON")
-            
-            # Check database integrity
-            cursor = conn.execute("PRAGMA integrity_check")
-            integrity_result = cursor.fetchone()[0]
-            if integrity_result != 'ok':
-                raise DatabaseError(f"Database integrity check failed: {integrity_result}")
-            
-            # Check if required tables exist
-            required_tables = ['parts', 'config', 'part_discovery_log']
-            cursor = conn.execute("""
-                SELECT name FROM sqlite_master
-                WHERE type='table' AND name NOT LIKE 'sqlite_%'
-            """)
-            existing_tables = [row[0] for row in cursor.fetchall()]
-            
-            missing_tables = set(required_tables) - set(existing_tables)
-            if missing_tables:
-                raise DatabaseError(f"Backup missing required tables: {missing_tables}")
-            
-            # Try to read from each table to ensure they're accessible
-            for table in required_tables:
-                try:
-                    cursor = conn.execute(f"SELECT COUNT(*) FROM {table}")
-                    count = cursor.fetchone()[0]
-                    logger.debug(f"Table {table} contains {count} records")
-                except sqlite3.Error as e:
-                    raise DatabaseError(f"Cannot read from table {table}: {e}")
-        
-        logger.info(f"Backup integrity verification passed: {backup_file}")
-        
-    except sqlite3.Error as e:
-        raise DatabaseError(f"SQLite error during backup verification: {e}")
-    except Exception as e:
-        raise DatabaseError(f"Backup verification failed: {e}")
 
 
 # Add individual commands to the group

@@ -226,8 +226,8 @@ uv run invoice-checker invoice process invoice.pdf
 # Process a folder of PDFs (saves to documents/ directory and auto-opens)
 uv run invoice-checker invoice process ./invoices
 
-# Process with interactive discovery enabled
-uv run invoice-checker invoice process ./invoices --interactive
+# Process invoices (interactive discovery is always enabled)
+uv run invoice-checker invoice process ./invoices
 
 # Process with different output formats
 uv run invoice-checker invoice process ./invoices --format json
@@ -682,8 +682,8 @@ uv run invoice-checker discovery review
 # Review specific discovery session
 uv run invoice-checker discovery review --session-id abc123
 
-# Interactive review with prompts to add parts
-uv run invoice-checker discovery review --interactive
+# Review with prompts to add parts (always interactive)
+uv run invoice-checker discovery review
 
 # Export unknown parts to file
 uv run invoice-checker discovery review --output unknowns.csv
@@ -754,7 +754,7 @@ uv run invoice-checker config list --format json
 
 ```bash
 # Set a configuration value
-uv run invoice-checker config set interactive_discovery true
+uv run invoice-checker config set price_tolerance 0.001
 
 # Set with specific data type
 uv run invoice-checker config set price_tolerance 0.001 --type float
@@ -790,9 +790,10 @@ uv run invoice-checker config setup --interactive
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `validation_mode` | `parts_based` | Default validation mode |
-| `interactive_discovery` | `true` | Enable interactive part discovery |
 | `price_tolerance` | `0.001` | Price comparison tolerance |
 | `log_retention_days` | `365` | Days to keep discovery logs |
+
+**Note**: Interactive discovery is always enabled and cannot be disabled.
 
 ---
 
@@ -881,7 +882,7 @@ uv run invoice-checker config list
 uv run invoice-checker config get validation_mode
 
 # Set configuration value
-uv run invoice-checker config set interactive_discovery true
+uv run invoice-checker config set price_tolerance 0.001
 
 # Reset configuration to defaults
 uv run invoice-checker config reset validation_mode
@@ -892,10 +893,10 @@ uv run invoice-checker config reset validation_mode
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `validation_mode` | `parts_based` | Default validation mode |
-| `interactive_discovery` | `true` | Enable interactive part discovery |
-| `discovery_batch_mode` | `false` | Collect unknown parts for batch review |
 | `price_tolerance` | `0.001` | Price comparison tolerance |
 | `log_retention_days` | `365` | Days to keep discovery logs |
+
+**Note**: Interactive discovery is always enabled and cannot be disabled.
 
 ### Automation and Scripting
 
@@ -1172,7 +1173,6 @@ uv run invoice-checker status --verbose
 invoice-checker process <input_path> [options]
   --output, -o          Output file path
   --format, -f          Output format (csv, txt, json)
-  --interactive, -i     Enable interactive discovery
   --collect-unknown     Collect unknown parts
   --validation-mode     Validation mode (parts_based, threshold_based)
   --threshold, -t       Threshold for threshold-based mode
@@ -1329,7 +1329,6 @@ invoice-checker config reset [key] [options]
 # Review unknown parts
 invoice-checker discovery review [options]
   --session-id, -s      Session ID
-  --interactive         Enable interactive review
   --output, -o          Output file
 
 # List sessions
@@ -1399,9 +1398,6 @@ TOOL001
 | Setting | Default Value | Description |
 |---------|---------------|-------------|
 | `validation_mode` | `parts_based` | Default validation mode |
-| `interactive_discovery` | `true` | Enable interactive part discovery |
-| `discovery_batch_mode` | `false` | Collect unknown parts for batch review |
-| `auto_add_discovered_parts` | `false` | Automatically add parts without confirmation |
 | `discovery_auto_skip_duplicates` | `true` | Skip parts already discovered in session |
 | `discovery_prompt_timeout` | `300` | Timeout for interactive prompts (seconds) |
 | `discovery_require_description` | `false` | Require description when adding parts |
@@ -1410,6 +1406,8 @@ TOOL001
 | `discovery_session_cleanup_days` | `7` | Days to keep inactive sessions |
 | `price_tolerance` | `0.001` | Price comparison tolerance |
 | `log_retention_days` | `365` | Days to keep discovery logs |
+
+**Note**: Interactive discovery is always enabled and cannot be disabled.
 
 ---
 

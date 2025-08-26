@@ -157,7 +157,15 @@ class TestSingleFileProcessingIntegration(unittest.TestCase):
         # Verify workflow was called with single file
         mock_execute_workflow.assert_called_once()
         args, kwargs = mock_execute_workflow.call_args
-        pdf_files = args[0]  # First argument should be PDF files list
+        # Check if pdf_files is in kwargs or positional args
+        if 'pdf_files' in kwargs:
+            pdf_files = kwargs['pdf_files']
+        elif len(args) > 0:
+            pdf_files = args[0]  # First argument should be PDF files list
+        else:
+            # If not found, the test setup might be different - check the call
+            self.fail("Could not find pdf_files argument in mock call")
+        
         self.assertEqual(len(pdf_files), 1)
         self.assertEqual(pdf_files[0], self.test_pdf)
     
@@ -194,7 +202,9 @@ class TestSingleFileProcessingIntegration(unittest.TestCase):
         # Verify interactive mode was passed through
         mock_execute_workflow.assert_called_once()
         args, kwargs = mock_execute_workflow.call_args
-        interactive_param = kwargs.get('interactive', args[2] if len(args) > 2 else None)
+        interactive_param = kwargs.get('interactive', False)
+        if not interactive_param and len(args) > 2:
+            interactive_param = args[2]
         self.assertTrue(interactive_param)
         
         # Verify results
@@ -234,8 +244,17 @@ class TestSingleFileProcessingIntegration(unittest.TestCase):
         # Verify threshold mode configuration
         mock_create_config.assert_called_once()
         args, kwargs = mock_create_config.call_args
-        validation_mode = args[0]
-        threshold = args[1]
+        # Check if validation_mode is in kwargs or positional args
+        if 'validation_mode' in kwargs:
+            validation_mode = kwargs['validation_mode']
+            threshold = kwargs.get('threshold')
+        elif len(args) >= 2:
+            validation_mode = args[0]
+            threshold = args[1]
+        else:
+            # If not found, the test setup might be different - check the call
+            self.fail("Could not find validation_mode argument in mock call")
+        
         self.assertEqual(validation_mode, 'threshold_based')
         self.assertEqual(threshold, Decimal('0.25'))
         

@@ -13,7 +13,7 @@ from typing import Optional
 
 
 # Base version - this is the only place you need to update the version number
-BASE_VERSION = "1.0.0"
+BASE_VERSION = "1.0.23"
 
 # Deployment version - set during build/deployment process
 # This will be used when git is not available or when running in deployed mode

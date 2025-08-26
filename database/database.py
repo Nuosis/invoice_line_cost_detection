@@ -46,22 +46,41 @@ class DatabaseManager:
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         
-        # Initialize database if it doesn't exist
-        if not self.db_path.exists():
+        # For in-memory databases, keep a persistent connection
+        self._memory_connection = None
+        if str(self.db_path) == ":memory:":
+            self._memory_connection = sqlite3.connect(":memory:")
+            self._memory_connection.row_factory = sqlite3.Row
+            self._memory_connection.execute("PRAGMA foreign_keys = ON")
+        
+        # Initialize database if it doesn't exist or is in-memory
+        if str(self.db_path) == ":memory:" or not self.db_path.exists():
             logger.info(f"Creating new database at {self.db_path}")
             self.initialize_database()
         else:
             logger.info(f"Using existing database at {self.db_path}")
-            # Migration: add item_type column if missing
+            # Migration: add item_type column if missing (only if parts table exists)
             with sqlite3.connect(str(self.db_path)) as conn:
-                cursor = conn.execute("PRAGMA table_info(parts)")
-                columns = [row[1] for row in cursor.fetchall()]
-                if "item_type" not in columns:
-                    logger.info("Migrating: Adding 'item_type' column to parts table")
-                    conn.execute("ALTER TABLE parts ADD COLUMN item_type TEXT")
-                    conn.commit()
-            # Verify database integrity
-            self._verify_database_schema()
+                # Check if parts table exists first
+                cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='parts'")
+                if cursor.fetchone():
+                    cursor = conn.execute("PRAGMA table_info(parts)")
+                    columns = [row[1] for row in cursor.fetchall()]
+                    if "item_type" not in columns:
+                        logger.info("Migrating: Adding 'item_type' column to parts table")
+                        conn.execute("ALTER TABLE parts ADD COLUMN item_type TEXT")
+                        conn.commit()
+                else:
+                    # Parts table doesn't exist, initialize the database
+                    logger.info("Parts table not found, initializing database")
+                    # Don't close conn here, let the context manager handle it
+                    pass
+            # If we need to initialize, do it after the connection is closed
+            if not self.db_path.exists() or not self._has_parts_table():
+                self.initialize_database()
+            else:
+                # Verify database integrity
+                self._verify_database_schema()
 
             # --- MIGRATION VERSION CHECK ---
             if not skip_version_check:
@@ -98,27 +117,34 @@ class DatabaseManager:
         """
         conn = None
         try:
-            conn = sqlite3.connect(str(self.db_path))
-            conn.row_factory = sqlite3.Row  # Enable column access by name
-            
-            # Enable foreign key constraints
-            conn.execute("PRAGMA foreign_keys = ON")
-            
-            # Enable WAL mode for better concurrency
-            conn.execute("PRAGMA journal_mode = WAL")
-            
-            # Set reasonable timeout
-            conn.execute("PRAGMA busy_timeout = 30000")
-            
-            yield conn
+            # Use persistent connection for in-memory databases
+            if self._memory_connection:
+                conn = self._memory_connection
+                # Don't set row_factory again as it's already set
+                yield conn
+            else:
+                conn = sqlite3.connect(str(self.db_path))
+                conn.row_factory = sqlite3.Row  # Enable column access by name
+                
+                # Enable foreign key constraints
+                conn.execute("PRAGMA foreign_keys = ON")
+                
+                # Enable WAL mode for better concurrency
+                conn.execute("PRAGMA journal_mode = WAL")
+                
+                # Set reasonable timeout
+                conn.execute("PRAGMA busy_timeout = 30000")
+                
+                yield conn
             
         except sqlite3.Error as e:
-            if conn:
+            if conn and not self._memory_connection:
                 conn.rollback()
             logger.error(f"Database error: {e}")
             raise DatabaseError(f"Database operation failed: {e}")
         finally:
-            if conn:
+            # Only close non-persistent connections
+            if conn and not self._memory_connection:
                 conn.close()
 
     @contextmanager
@@ -223,8 +249,6 @@ class DatabaseManager:
                 config_data = [
                     ('validation_mode', 'parts_based', 'string', 'Validation mode: parts_based or threshold_based', 'validation'),
                     ('default_output_format', 'txt', 'string', 'Default report output format', 'reporting'),
-                    ('interactive_discovery', 'true', 'boolean', 'Enable interactive part discovery during processing', 'discovery'),
-                    ('auto_add_discovered_parts', 'false', 'boolean', 'Automatically add discovered parts without user confirmation', 'discovery'),
                     ('price_tolerance', '0.001', 'number', 'Price comparison tolerance for floating point precision', 'validation'),
                     ('backup_retention_days', '30', 'number', 'Number of days to retain database backups', 'maintenance'),
                     ('log_retention_days', '365', 'number', 'Number of days to retain discovery log entries', 'maintenance'),
@@ -356,9 +380,8 @@ class DatabaseManager:
         -- Insert initial configuration data (only if not exists)
         INSERT OR IGNORE INTO config (key, value, data_type, description, category) VALUES
         ('validation_mode', 'parts_based', 'string', 'Validation mode: parts_based or threshold_based', 'validation'),
-        ('default_output_format', 'csv', 'string', 'Default report output format', 'reporting'),
+        ('default_output_format', 'txt', 'string', 'Default report output format', 'reporting'),
         ('interactive_discovery', 'true', 'boolean', 'Enable interactive part discovery during processing', 'discovery'),
-        ('auto_add_discovered_parts', 'false', 'boolean', 'Automatically add discovered parts without user confirmation', 'discovery'),
         ('price_tolerance', '0.001', 'number', 'Price comparison tolerance for floating point precision', 'validation'),
         ('backup_retention_days', '30', 'number', 'Number of days to retain database backups', 'maintenance'),
         ('log_retention_days', '365', 'number', 'Number of days to retain discovery log entries', 'maintenance'),
@@ -398,6 +421,20 @@ class DatabaseManager:
         ORDER BY pdl.discovery_date DESC;
         """
 
+    def _has_parts_table(self) -> bool:
+        """
+        Check if the parts table exists in the database.
+        
+        Returns:
+            bool: True if parts table exists, False otherwise
+        """
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='parts'")
+                return cursor.fetchone() is not None
+        except Exception:
+            return False
+
     def _verify_database_schema(self) -> None:
         """
         Verify that the database schema is correct and up-to-date.
@@ -411,7 +448,7 @@ class DatabaseManager:
                 required_tables = ['parts', 'config', 'part_discovery_log']
                 
                 cursor = conn.execute("""
-                    SELECT name FROM sqlite_master 
+                    SELECT name FROM sqlite_master
                     WHERE type='table' AND name NOT LIKE 'sqlite_%'
                 """)
                 existing_tables = [row[0] for row in cursor.fetchall()]
@@ -652,6 +689,7 @@ class DatabaseManager:
                 
                 # Get existing part
                 existing_part = self.get_part(part_identifier)
+                original_composite_key = existing_part.composite_key
                 
                 # Update fields from kwargs
                 if 'authorized_price' in kwargs:
@@ -690,7 +728,7 @@ class DatabaseManager:
                         existing_part.composite_key, existing_part.part_number, float(existing_part.authorized_price),
                         existing_part.description, existing_part.item_type, existing_part.category,
                         existing_part.source, existing_part.first_seen_invoice, existing_part.last_updated.isoformat(),
-                        existing_part.is_active, existing_part.notes, part_identifier
+                        existing_part.is_active, existing_part.notes, original_composite_key
                     ))
                     
                     if cursor.rowcount == 0:
@@ -1250,9 +1288,8 @@ class DatabaseManager:
             # Define default configurations
             default_configs = {
                 'validation_mode': 'parts_based',
-                'default_output_format': 'csv',
+                'default_output_format': 'txt',
                 'interactive_discovery': 'true',
-                'auto_add_discovered_parts': 'false',
                 'price_tolerance': '0.001',
                 'backup_retention_days': '30',
                 'log_retention_days': '365',
@@ -1639,7 +1676,7 @@ class DatabaseManager:
                             logger.debug(f"Imported part: {part.part_number}")
                         except DatabaseError as e:
                             if "already exists" in str(e) and update_existing:
-                                # Update existing part
+                                # Update existing part using composite key
                                 self.update_part(part)
                                 imported_count += 1
                                 logger.debug(f"Updated existing part: {part.part_number}")
@@ -2017,9 +2054,18 @@ class DatabaseManager:
                                 logger.debug(f"Imported part: {part.part_number}")
                             except DatabaseError as e:
                                 if "already exists" in str(e) and update_existing:
-                                    # Update existing part
+                                    # Update existing part by part_number with individual fields
                                     try:
-                                        self.update_part(part)
+                                        self.update_part(
+                                            part.part_number,
+                                            authorized_price=part.authorized_price,
+                                            description=part.description,
+                                            category=part.category,
+                                            source=part.source,
+                                            first_seen_invoice=part.first_seen_invoice,
+                                            is_active=part.is_active,
+                                            notes=part.notes
+                                        )
                                         result['valid_rows_processed'] += 1
                                         logger.debug(f"Updated existing part: {part.part_number}")
                                     except Exception as update_error:

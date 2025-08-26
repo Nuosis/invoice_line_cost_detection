@@ -77,16 +77,13 @@ flowchart TD
     J -->|Yes| K[Mark as valid]
     J -->|No| L[Flag as potential overcharge]
     
-    I --> M{Interactive mode?}
-    M -->|Yes| N[Prompt user to add part]
-    M -->|No| O[Log for discovery review]
+    I --> N[Prompt user to add part]
     
     N --> P{User adds part?}
     P -->|Yes| Q[Save to database]
-    P -->|No| O
+    P -->|No| R[Continue processing]
     
-    Q --> R[Continue processing]
-    O --> R
+    Q --> R
     K --> R
     L --> R
     
@@ -179,12 +176,9 @@ flowchart TD
     B -->|export| F[Export discovery data]
     
     C --> C1[Get most recent session or specify session ID]
-    C1 --> C2{Interactive mode?}
-    C2 -->|Yes| C3[Present parts for user decision]
-    C2 -->|No| C4[Export to file]
+    C1 --> C3[Present parts for user decision]
     C3 --> C5[User adds/skips parts]
     C5 --> G[Operation complete]
-    C4 --> G
     
     D --> D1[Query discovery logs from database]
     D1 --> D2[Format session information]
@@ -256,7 +250,7 @@ flowchart TD
 The main workflow for invoice processing using the modern CLI system. Users can run the tool without arguments for interactive mode, or use specific commands for direct operations. The system automatically initializes the database and provides comprehensive parts-based validation.
 
 ### Processing Flow
-The core invoice processing workflow showing how the system extracts PDF data using PDFProcessor, validates against the parts database using ValidationEngine, handles unknown parts through SimplePartDiscoveryService, and generates reports using SimpleReportGenerator.
+The core invoice processing workflow showing how the system extracts PDF data using PDFProcessor, validates against the parts database using ValidationEngine, handles unknown parts through SimplePartDiscoveryService (always in interactive mode), and generates reports using SimpleReportGenerator.
 
 ### Parts Management Flow
 Comprehensive workflow for managing the parts database through the `parts` command group. Includes operations for adding, listing, updating, deleting, importing, exporting, and bulk operations on parts data stored in the SQLite database.
@@ -265,7 +259,7 @@ Comprehensive workflow for managing the parts database through the `parts` comma
 Workflow for database maintenance operations through the `database` command group. Includes backup creation, restoration, schema migration, maintenance tasks, and database reset functionality.
 
 ### Discovery Management Flow
-Workflow for managing unknown parts discovery through the `discovery` command group. Allows users to review discovered parts from previous processing sessions, view statistics, and export discovery data.
+Workflow for managing unknown parts discovery through the `discovery` command group. The system always operates in interactive mode when unknown parts are encountered. Users can review discovered parts from previous processing sessions, view statistics, and export discovery data.
 
 ### Configuration Management Flow
 Workflow for system configuration through the `config` command group. Provides get/set operations for configuration values stored in the database, with support for different data types and categories.

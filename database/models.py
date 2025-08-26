@@ -525,7 +525,7 @@ DEFAULT_CONFIG = {
     ),
     'default_output_format': Configuration(
         key='default_output_format',
-        value='csv',
+        value='txt',
         data_type='string',
         description='Default report output format',
         category='reporting'
@@ -535,13 +535,6 @@ DEFAULT_CONFIG = {
         value='true',
         data_type='boolean',
         description='Enable interactive part discovery during processing',
-        category='discovery'
-    ),
-    'auto_add_discovered_parts': Configuration(
-        key='auto_add_discovered_parts',
-        value='false',
-        data_type='boolean',
-        description='Automatically add discovered parts without user confirmation',
         category='discovery'
     ),
     'discovery_batch_mode': Configuration(

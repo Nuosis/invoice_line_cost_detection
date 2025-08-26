@@ -24,7 +24,9 @@ from cli.commands.invoice_commands import (
 
 from cli.exceptions import ProcessingError
 from processing.validation_models import ValidationConfiguration
-from processing.validation_integration import ValidationWorkflowManager
+# ValidationWorkflowManager is created by create_validation_workflow factory function
+# Import the factory function instead
+from cli.commands.invoice_commands import create_validation_workflow
 
 
 class TestDiscoverPdfFiles:
@@ -246,7 +248,7 @@ class TestExecuteValidationWorkflow:
         self.mock_config = ValidationConfiguration()
         
         # Create mock workflow with realistic behavior
-        self.mock_workflow = Mock(spec=ValidationWorkflowManager)
+        self.mock_workflow = Mock()
         self.mock_workflow.report_generator = Mock()
         
     def test_execute_single_file_workflow(self):
@@ -357,7 +359,7 @@ class TestProcessInvoicesIntegration:
         self.mock_db_manager.get_config_value.side_effect = lambda key, default: default
         
         # Create mock workflow
-        self.mock_workflow = Mock(spec=ValidationWorkflowManager)
+        self.mock_workflow = Mock()
         self.mock_workflow.report_generator = Mock()
     
     def test_process_invoices_single_file_integration(self):
@@ -464,7 +466,7 @@ class TestProcessInvoicesIntegration:
             empty_dir.mkdir()
             output_path = Path(temp_dir) / "report.csv"
             
-            with pytest.raises(ProcessingError, match="Invoice processing failed"):
+            with pytest.raises(ProcessingError, match="Invoice processing failed:"):
                 _process_invoices(
                     input_path=empty_dir,
                     output_path=output_path,

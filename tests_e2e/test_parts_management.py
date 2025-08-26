@@ -426,6 +426,9 @@ class TestPartsManagement(unittest.TestCase):
     def test_parts_import_csv_with_update_existing(self):
         """
         Test parts import command with update existing functionality.
+        
+        With composite keys, parts are identified by item_type|description|part_number.
+        This test verifies that CSV import correctly handles the composite key system.
         """
         # Initialize database manager
         self.db_manager = DatabaseManager(str(self.db_path))
@@ -438,13 +441,13 @@ class TestPartsManagement(unittest.TestCase):
         )
         self.db_manager.create_part(existing_part)
         
-        # Create CSV with updated data for existing part and new part
+        # Create CSV with same composite key (same description and part_number) and new part
         csv_file_path = self.csv_dir / "update_import_test.csv"
         self.created_files.append(csv_file_path)
         
         test_data = [
             ["part_number", "authorized_price", "description", "category"],
-            ["EXISTING001", "75.00", "Updated Description", "Updated Category"],
+            ["EXISTING001", "75.00", "Original Description", "Updated Category"],  # Same composite key
             ["NEW001", "25.00", "New Part", "New Category"]
         ]
         
@@ -455,10 +458,10 @@ class TestPartsManagement(unittest.TestCase):
         # Test import with update existing (simulates: parts import update_import_test.csv --update-existing)
         self.db_manager.import_parts_from_csv(str(csv_file_path), update_existing=True)
         
-        # Verify existing part was updated
+        # Verify existing part was updated (same composite key, so it should update)
         updated_part = self.db_manager.get_part("EXISTING001")
         self.assertEqual(updated_part.authorized_price, Decimal("75.00"))
-        self.assertEqual(updated_part.description, "Updated Description")
+        self.assertEqual(updated_part.description, "Original Description")  # Same description
         self.assertEqual(updated_part.category, "Updated Category")
         
         # Verify new part was added
@@ -466,7 +469,7 @@ class TestPartsManagement(unittest.TestCase):
         self.assertEqual(new_part.authorized_price, Decimal("25.00"))
         self.assertEqual(new_part.description, "New Part")
         
-        # Verify total count
+        # Verify total count - should still be 2 parts
         all_parts = self.db_manager.list_parts()
         self.assertEqual(len(all_parts), 2)
     

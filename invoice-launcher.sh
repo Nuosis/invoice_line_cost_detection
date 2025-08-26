@@ -585,9 +585,8 @@ show_main_menu() {
     echo -e "${GREEN}1)${NC} Quick Process       - Process invoices with defaults (discovery enabled)"
     echo -e "${GREEN}2)${NC} Launch Application  - Start the interactive Invoice Rate Detection System"
     echo -e "${GREEN}3)${NC} Setup               - Install, update, and configure system"
-    echo -e "${GREEN}4)${NC} Configuration       - Setup and manage system options"
-    echo -e "${GREEN}5)${NC} Help                - Show help and documentation"
-    echo -e "${GREEN}6)${NC} Exit                - Exit the launcher"
+    echo -e "${GREEN}4)${NC} Help                - Show help and documentation"
+    echo -e "${GREEN}5)${NC} Exit                - Exit the launcher"
     echo ""
     echo -e "${YELLOW}Note: Quick Process uses all configured defaults but still discovers new parts."
     echo -e "Use Launch Application for full interactive control.${NC}"
@@ -644,7 +643,7 @@ main() {
         show_banner
         show_main_menu
         
-        read -p "Select option (1-6): " choice
+        read -p "Select option (1-5): " choice
         
         case $choice in
             1)
@@ -663,25 +662,14 @@ main() {
                 fi
                 ;;
             4)
-                # Configuration management (interactive setup wizard)
-                if [[ -d "$PROJECT_DIR" ]]; then
-                    cd "$PROJECT_DIR"
-                    uv run invoice-checker config setup
-                    cd ..
-                else
-                    log_error "Project not found. Please install the system first."
-                fi
-                read -p "Press Enter to continue..."
-                ;;
-            5)
                 show_help
                 ;;
-            6)
+            5)
                 log_info "Thank you for using Invoice Rate Detection System!"
                 exit 0
                 ;;
             *)
-                log_error "Invalid option. Please select 1-6."
+                log_error "Invalid option. Please select 1-5."
                 read -p "Press Enter to continue..."
                 ;;
         esac

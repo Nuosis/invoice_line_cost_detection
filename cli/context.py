@@ -60,7 +60,6 @@ class ProcessingContext:
         """Initialize the processing context."""
         self.input_path = None
         self.output_path = None
-        self.interactive_mode = False
         self.batch_mode = False
         self.session_id = None
         self.validation_mode = "parts_based"
@@ -89,13 +88,6 @@ class ProcessingContext:
         """Get the output path for reports."""
         return self.output_path
     
-    def set_interactive_mode(self, enabled: bool):
-        """Enable or disable interactive mode."""
-        self.interactive_mode = enabled
-    
-    def is_interactive_mode(self) -> bool:
-        """Check if interactive mode is enabled."""
-        return self.interactive_mode
     
     def set_batch_mode(self, enabled: bool):
         """Enable or disable batch processing mode."""
@@ -194,7 +186,6 @@ class ProcessingContext:
         return {
             'input_path': self.input_path,
             'output_path': self.output_path,
-            'interactive_mode': self.interactive_mode,
             'batch_mode': self.batch_mode,
             'session_id': self.session_id,
             'validation_mode': self.validation_mode,

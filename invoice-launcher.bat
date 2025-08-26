@@ -56,7 +56,7 @@ cls
 call :show_banner
 call :show_main_menu
 
-set /p "choice=Select option (1-6): "
+set /p "choice=Select option (1-5): "
 
 if "%choice%"=="1" (
     call :launch_quick_process
@@ -74,28 +74,16 @@ if "%choice%"=="3" (
     goto main_loop
 )
 if "%choice%"=="4" (
-    REM Configuration management (interactive setup wizard)
-    if exist "%PROJECT_DIR%" (
-        cd /d "%PROJECT_DIR%"
-        uv run invoice-checker config setup
-        cd ..
-    ) else (
-        echo %ERROR_PREFIX% Project not found. Please install the system first.
-    )
-    pause
-    goto main_loop
-)
-if "%choice%"=="5" (
     call :show_help
     goto main_loop
 )
-if "%choice%"=="6" (
+if "%choice%"=="5" (
     echo %INFO_PREFIX% Thank you for using Invoice Rate Detection System!
     pause
     exit /b 0
 )
 
-echo %ERROR_PREFIX% Invalid option. Please select 1-6.
+echo %ERROR_PREFIX% Invalid option. Please select 1-5.
 pause
 goto main_loop
 
@@ -151,9 +139,8 @@ echo.
 echo 1) Quick Process       - Process invoices with defaults (discovery enabled)
 echo 2) Launch Application  - Start the interactive Invoice Rate Detection System
 echo 3) Setup               - Install, update, and configure system
-echo 4) Configuration       - Setup and manage system options
-echo 5) Help                - Show help and documentation
-echo 6) Exit                - Exit the launcher
+echo 4) Help                - Show help and documentation
+echo 5) Exit                - Exit the launcher
 echo.
 echo Note: Quick Process uses all configured defaults but still discovers new parts.
 echo Use Launch Application for full interactive control.

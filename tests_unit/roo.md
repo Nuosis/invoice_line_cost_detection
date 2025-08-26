@@ -13,29 +13,29 @@ uv sync --group dev
 #### Basic Commands
 ```bash
 # Run all tests
-PYTHONPATH=. uv run python -m pytest unit_tests/ -v
+PYTHONPATH=. uv run python -m pytest tests_unit/ -v
 
 # Run specific test file
-PYTHONPATH=. uv run python -m pytest unit_tests/test_database.py -v
+PYTHONPATH=. uv run python -m pytest tests_unit/test_database.py -v
 
 # Run specific test class or method
-PYTHONPATH=. uv run python -m pytest unit_tests/test_database.py::TestDatabaseManager -v
-PYTHONPATH=. uv run python -m pytest unit_tests/test_database.py::TestDatabaseManager::test_database_initialization -v
+PYTHONPATH=. uv run python -m pytest tests_unit/test_database.py::TestDatabaseManager -v
+PYTHONPATH=. uv run python -m pytest tests_unit/test_database.py::TestDatabaseManager::test_database_initialization -v
 ```
 
 #### Common Options
 ```bash
 # Run with coverage
-PYTHONPATH=. uv run python -m pytest --cov=. --cov-report=term-missing unit_tests/
+PYTHONPATH=. uv run python -m pytest --cov=. --cov-report=term-missing tests_unit/
 
 # Stop on first failure
-PYTHONPATH=. uv run python -m pytest -x unit_tests/
+PYTHONPATH=. uv run python -m pytest -x tests_unit/
 
 # Show detailed output for failures
-PYTHONPATH=. uv run python -m pytest --tb=long unit_tests/
+PYTHONPATH=. uv run python -m pytest --tb=long tests_unit/
 
 # Run quietly (minimal output)
-PYTHONPATH=. uv run python -m pytest -q unit_tests/
+PYTHONPATH=. uv run python -m pytest -q tests_unit/
 ```
 
 ## Test Files
@@ -92,13 +92,13 @@ rm -f test_*.db
 ### Debugging Failed Tests
 ```bash
 # Run single failing test with full details
-PYTHONPATH=. uv run python -m pytest -v --tb=long unit_tests/test_database.py::TestSpecificTest::test_method
+PYTHONPATH=. uv run python -m pytest -v --tb=long tests_unit/test_database.py::TestSpecificTest::test_method
 
 # Run with debugger on failure
-PYTHONPATH=. uv run python -m pytest --pdb unit_tests/test_database.py
+PYTHONPATH=. uv run python -m pytest --pdb tests_unit/test_database.py
 
 # Generate coverage report
-PYTHONPATH=. uv run python -m pytest --cov=. --cov-report=html unit_tests/
+PYTHONPATH=. uv run python -m pytest --cov=. --cov-report=html tests_unit/
 ```
 
 ## Writing New Tests
@@ -131,7 +131,7 @@ class TestNewFeature(unittest.TestCase):
 
 ---
 
-**Quick Reference**: `PYTHONPATH=. uv run python -m pytest unit_tests/ -v`
+**Quick Reference**: `PYTHONPATH=. uv run python -m pytest tests_unit/ -v`
 
 ## Coverage Summary
 

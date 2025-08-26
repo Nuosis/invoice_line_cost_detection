@@ -328,7 +328,6 @@ class TestInitialDatabaseSetup(unittest.TestCase):
             'validation_mode',
             'default_output_format',
             'interactive_discovery',
-            'auto_add_discovered_parts',
             'price_tolerance',
             'backup_retention_days',
             'log_retention_days',

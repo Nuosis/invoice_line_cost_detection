@@ -1123,7 +1123,6 @@ class ValidationConfiguration:
     
     # Part discovery settings
     interactive_discovery: bool = True
-    auto_add_discovered_parts: bool = False
     batch_collect_unknown_parts: bool = True
     
     # Performance settings

@@ -97,7 +97,7 @@ class TestConfigurationManagement(unittest.TestCase):
         
         # Test getting default output format (simulates: config get default_output_format)
         output_format = self.db_manager.get_config_value('default_output_format')
-        self.assertEqual(output_format, 'csv')
+        self.assertEqual(output_format, 'txt')
         
         # Test getting default interactive discovery (simulates: config get interactive_discovery)
         interactive_discovery = self.db_manager.get_config_value('interactive_discovery')
@@ -175,17 +175,6 @@ class TestConfigurationManagement(unittest.TestCase):
         updated_value = self.db_manager.get_config_value('interactive_discovery')
         self.assertFalse(updated_value)
         
-        # Test setting boolean to true (simulates: config set auto_add_discovered_parts true)
-        self.db_manager.set_config_value('auto_add_discovered_parts', True)
-        
-        # Verify the boolean value was set correctly
-        auto_add_value = self.db_manager.get_config_value('auto_add_discovered_parts')
-        self.assertTrue(auto_add_value)
-        
-        # Verify data type is preserved
-        auto_add_config = self.db_manager.get_config('auto_add_discovered_parts')
-        self.assertEqual(auto_add_config.data_type, 'boolean')
-        self.assertIsInstance(auto_add_config.get_typed_value(), bool)
     
     def test_config_set_number_values(self):
         """

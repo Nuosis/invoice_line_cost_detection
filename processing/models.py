@@ -403,6 +403,30 @@ class InvoiceLineItem:
             'line_number': self.line_number
         }
 
+    @classmethod
+    def from_line_item(cls, line_item: 'LineItem', invoice_number: str = None, invoice_date: str = None) -> 'InvoiceLineItem':
+        """
+        Create an InvoiceLineItem from a LineItem.
+        
+        Args:
+            line_item: LineItem instance to convert
+            invoice_number: Invoice number to associate with the line item
+            invoice_date: Invoice date to associate with the line item
+            
+        Returns:
+            InvoiceLineItem instance
+        """
+        return cls(
+            part_number=line_item.item_code,
+            description=line_item.description,
+            unit_price=line_item.rate,
+            quantity=line_item.quantity,
+            total_price=line_item.total,
+            invoice_number=invoice_number,
+            invoice_date=invoice_date,
+            line_number=line_item.line_number
+        )
+
 
 @dataclass
 class ProcessingResult:

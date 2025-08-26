@@ -35,7 +35,18 @@ def cleanup_test_backup_files(base_dir: str = ".") -> List[str]:
         "test_*_pre_restore_*.db",
         "*test*_backup_*.db",
         "*test*_pre_restore_*.db",
-        "test_backup_*.db"
+        "test_backup_*.db",
+        # SQLite auxiliary files
+        "test_*_backup_*.db-wal",
+        "test_*_backup_*.db-shm",
+        "test_*_pre_restore_*.db-wal",
+        "test_*_pre_restore_*.db-shm",
+        "*test*_backup_*.db-wal",
+        "*test*_backup_*.db-shm",
+        "*test*_pre_restore_*.db-wal",
+        "*test*_pre_restore_*.db-shm",
+        "test_backup_*.db-wal",
+        "test_backup_*.db-shm"
     ]
     
     for pattern in patterns:
@@ -72,7 +83,12 @@ def cleanup_all_backup_files(base_dir: str = ".") -> List[str]:
     # Patterns for all backup files
     patterns = [
         "*_backup_*.db",
-        "*_pre_restore_*.db"
+        "*_pre_restore_*.db",
+        # SQLite auxiliary files
+        "*_backup_*.db-wal",
+        "*_backup_*.db-shm",
+        "*_pre_restore_*.db-wal",
+        "*_pre_restore_*.db-shm"
     ]
     
     for pattern in patterns:

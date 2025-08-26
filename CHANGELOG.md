@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.23] - 2025-08-20
+
+### Removed
+- auto_add_discovered_parts configuration and any auto-add behavior
+
+### Changed
+- Tests updated to remove any dependence on auto_add_discovered_parts
+- Documentation updated to reflect that unknown parts are never auto-added; additions require explicit interactive confirmation
+- Clarified CLI help text indicating "no auto-add" behavior across discovery flows
+
 ## [1.0.22] - 2025-08-08
 
 ### Changes

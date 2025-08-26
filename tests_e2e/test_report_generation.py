@@ -21,7 +21,7 @@ import uuid
 
 from database.database import DatabaseManager
 from database.models import Part
-from processing.validation_integration import create_validation_workflow
+from cli.commands.invoice_commands import create_validation_workflow
 from processing.validation_models import ValidationConfiguration
 from processing.report_generator import create_report_generator
 

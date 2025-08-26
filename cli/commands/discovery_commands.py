@@ -41,12 +41,10 @@ def discovery_group(ctx):
 
 @discovery_group.command('review')
 @click.option('--session-id', '-s', help='Discovery session ID to review')
-@click.option('--interactive/--no-interactive', default=True, 
-              help='Enable interactive review and addition of parts')
 @click.option('--output', '-o', type=click.Path(), 
               help='Output file for unknown parts report (CSV format)')
 @click.pass_context
-def review_unknown_parts(ctx, session_id: Optional[str], interactive: bool, output: Optional[str]):
+def review_unknown_parts(ctx, session_id: Optional[str], output: Optional[str]):
     """
     Review unknown parts discovered during invoice processing.
     
@@ -85,28 +83,24 @@ def review_unknown_parts(ctx, session_id: Optional[str], interactive: bool, outp
             console.print(format_success(f"Unknown parts exported to {output}"))
             return
         
-        if interactive:
-            # Interactive review and addition - simplified approach
-            console.print(format_info(f"Found {len(unknown_parts_data)} unknown parts for review"))
-            decisions = []
-            for part_data in unknown_parts_data:
-                part_number = part_data.get('part_number', 'Unknown')
-                price = part_data.get('price', 0.0)
-                console.print(format_info(f"Part: {part_number}, Price: ${price:.4f}"))
-                if click.confirm(f"Add {part_number} to database?", default=True):
-                    decisions.append({'part_data': part_data, 'action': 'add'})
-                else:
-                    decisions.append({'part_data': part_data, 'action': 'skip'})
-            
-            if decisions:
-                # Process the decisions
-                results = _process_batch_decisions(discovery_service, decisions, session_id)
-                _display_batch_results(results)
+        # Interactive review and addition - always enabled
+        console.print(format_info(f"Found {len(unknown_parts_data)} unknown parts for review"))
+        decisions = []
+        for part_data in unknown_parts_data:
+            part_number = part_data.get('part_number', 'Unknown')
+            price = part_data.get('price', 0.0)
+            console.print(format_info(f"Part: {part_number}, Price: ${price:.4f}"))
+            if click.confirm(f"Add {part_number} to database?", default=True):
+                decisions.append({'part_data': part_data, 'action': 'add'})
             else:
-                console.print(format_info("No parts were processed."))
+                decisions.append({'part_data': part_data, 'action': 'skip'})
+        
+        if decisions:
+            # Process the decisions
+            results = _process_batch_decisions(discovery_service, decisions, session_id)
+            _display_batch_results(results)
         else:
-            # Just display the unknown parts
-            _display_unknown_parts_table(unknown_parts_data)
+            console.print(format_info("No parts were processed."))
     
     except (DatabaseError, CLIError) as e:
         console.print(format_error(f"Error reviewing unknown parts: {e}"))

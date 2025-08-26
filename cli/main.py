@@ -578,7 +578,7 @@ def quick(ctx, input_path, no_auto_open):
     - Uses default invoice location if no input provided
     - Uses default output format and location
     - Uses default validation mode
-    - Enables part discovery (but auto-adds new parts without prompting)
+    - Enables part discovery (records unknown parts; no prompts)
     - Auto-opens reports unless --no-auto-open is specified
     
     Perfect for streamlined processing when you want discovery

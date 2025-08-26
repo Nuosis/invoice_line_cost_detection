@@ -1,6 +1,6 @@
 # Invoice Rate Detection System - Development Guide
 
-**THIS SYSTEM HAS NEVER BEEN DEPLOYED. WE DO NOT NEED TO MAINTAIN BACKWARDS COMPATABILITY UNLESS EXPLICITLY REQUESTED**
+**THIS SYSTEM HAS NEVER BEEN DEPLOYED. WE DO NOT NEED TO MAINTAIN BACKWARDS COMPATABILITY FOR DEPRICATED FEATURES**
 
 ## Solution Overview
 
@@ -90,3 +90,4 @@ see report_format_specifications
 - **Modern architecture with clean separation of concerns.**
 - **Extensible validation system for future requirements.**
 - **No post-processing or automation beyond the report.**
+- **We must use the composite key for the primary key**
