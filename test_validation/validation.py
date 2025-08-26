@@ -62,7 +62,6 @@ def process_single_file(input_path: Path, db_manager: DatabaseManager, logger: l
     # Create invoice processor
     processor = InvoiceProcessor(
         database_manager=db_manager,
-        interactive_mode=False,
         logger=logger
     )
     
@@ -90,7 +89,6 @@ def process_directory(input_path: Path, db_manager: DatabaseManager, logger: log
     # Create invoice processor with progress callback
     processor = InvoiceProcessor(
         database_manager=db_manager,
-        interactive_mode=False,
         progress_callback=progress_callback,
         logger=logger
     )
@@ -119,7 +117,6 @@ def generate_reports_from_result(result, output_dir: Path, base_name: str, logge
     # Create invoice processor for report generation
     processor = InvoiceProcessor(
         database_manager=None,  # Not needed for report generation
-        interactive_mode=False,
         logger=logger
     )
     

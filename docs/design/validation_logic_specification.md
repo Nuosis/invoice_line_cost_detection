@@ -1,10 +1,24 @@
 # Invoice Rate Detection System - Validation Logic Specification
 
-**Document Version**: 1.0  
-**Date**: July 29, 2025  
-**Author**: System Architect  
+**Document Version**: 1.0
+**Date**: July 29, 2025
+**Author**: System Architect
+**Status**: SUPERSEDED by v2.0
 
 ---
+
+## ⚠️ IMPORTANT NOTICE
+
+**This specification has been SUPERSEDED by the streamlined v2.0 specification.**
+
+**Please refer to**: [`validation_logic_specification_v2.md`](validation_logic_specification_v2.md)
+
+**Reason for superseding**: Analysis revealed that the complex 8-phase validation approach with Strategy patterns was over-engineered for this simple desktop application. The v2.0 specification reflects the actual working implementation that successfully meets business requirements using KISS principles.
+
+---
+
+## Original Specification (v1.0) - ARCHIVED
+
 
 ## Table of Contents
 

@@ -34,7 +34,7 @@ class TestValidationResult:
         assert result.value == "GP0171NAVY"
         assert result.field_name == "part_number"
         assert result.error_message is None
-        assert result.severity == ValidationSeverity.ERROR
+        assert result.severity == ValidationSeverity.ERROR  # Keep for backward compatibility
         assert result.suggestions == []
     
     def test_invalid_result_creation(self):
@@ -44,7 +44,7 @@ class TestValidationResult:
             is_valid=False,
             error_message="Invalid part number format",
             field_name="part_number",
-            severity=ValidationSeverity.CRITICAL,
+            severity=ValidationSeverity.CRITICAL,  # Keep for backward compatibility
             suggestions=suggestions
         )
         
@@ -52,7 +52,7 @@ class TestValidationResult:
         assert result.value is None
         assert result.error_message == "Invalid part number format"
         assert result.field_name == "part_number"
-        assert result.severity == ValidationSeverity.CRITICAL
+        assert result.severity == ValidationSeverity.CRITICAL  # Keep for backward compatibility
         assert result.suggestions == suggestions
     
     def test_post_init_suggestions_default(self):
@@ -167,7 +167,7 @@ class TestValidationHelper:
         assert result.value is None
         assert result.field_name == "part_number"
         assert result.error_message is not None
-        assert result.severity == ValidationSeverity.ERROR
+        assert result.severity == ValidationSeverity.ERROR  # Keep for backward compatibility
         assert len(result.suggestions) > 0
     
     def test_validate_single_item_unexpected_error(self):
@@ -180,7 +180,7 @@ class TestValidationHelper:
         )
         
         assert result.is_valid is False
-        assert result.severity == ValidationSeverity.CRITICAL
+        assert result.severity == ValidationSeverity.CRITICAL  # Keep for backward compatibility
         assert "Unexpected validation error" in result.error_message
     
     def test_validate_batch_input_success(self):
@@ -351,14 +351,14 @@ class TestValidationHelper:
                 is_valid=False,
                 error_message="Invalid part number",
                 field_name="part_number",
-                severity=ValidationSeverity.ERROR,
+                severity=ValidationSeverity.ERROR,  # Keep for backward compatibility
                 suggestions=["Use alphanumeric characters"]
             ),
             ValidationResult(
                 is_valid=False,
                 error_message="Critical system error",
                 field_name="system",
-                severity=ValidationSeverity.CRITICAL
+                severity=ValidationSeverity.CRITICAL  # Keep for backward compatibility
             )
         ]
         

@@ -79,7 +79,7 @@ class DiscoverySession:
 # Alias for compatibility
 InteractivePartDiscoveryService = SimplePartDiscoveryService
 from processing.models import InvoiceData, LineItem
-# ValidationEngine doesn't exist, create a mock for testing
+# ValidationEngine mock updated for streamlined v2.0 workflow
 class ValidationEngine:
     def __init__(self, db_manager, config):
         self.db_manager = db_manager
@@ -89,6 +89,41 @@ class ValidationEngine:
     def get_discovery_service(self):
         return self.discovery_service
     
+    def _validate_single_part(self, part_data, validation_mode):
+        """
+        Mock implementation of streamlined validation workflow.
+        
+        Returns binary validation result: PASSED/FAILED/UNKNOWN only.
+        """
+        db_fields = part_data.get('database_fields', {})
+        part_number = db_fields.get('part_number')
+        extracted_price = db_fields.get('authorized_price')
+        
+        # Mock composite key lookup
+        try:
+            existing_part = self.db_manager.find_part_by_components(
+                db_fields.get('item_type'),
+                db_fields.get('description', ''),
+                part_number
+            )
+            
+            if existing_part:
+                # Binary price validation
+                if extracted_price is not None:
+                    authorized_price = float(existing_part.authorized_price)
+                    price_diff = abs(float(extracted_price) - authorized_price)
+                    
+                    if price_diff <= float(self.config.price_tolerance):
+                        return {'validation_status': 'PASSED', 'database_price': authorized_price}
+                    else:
+                        return {'validation_status': 'FAILED', 'database_price': authorized_price}
+                else:
+                    return {'validation_status': 'PASSED', 'database_price': float(existing_part.authorized_price)}
+            else:
+                return {'validation_status': 'UNKNOWN', 'database_price': None}
+        except:
+            return {'validation_status': 'UNKNOWN', 'database_price': None}
+    
     def validate_invoice(self, pdf_path):
         # Mock implementation for testing
         mock_result = Mock()
@@ -96,15 +131,15 @@ class ValidationEngine:
         return mock_result
     
     def validate_invoice_with_discovery(self, pdf_path, interactive_discovery=True):
-        # Mock implementation for testing
+        # Mock implementation for testing - streamlined workflow
         mock_result = Mock()
         mock_result.processing_successful = True
-        # Return discovery results to match test expectations
+        # Return discovery results to match streamlined expectations
         discovery_results = [PartDiscoveryResult(part_number="UNKNOWN1", action_taken="skipped")]
         return mock_result, discovery_results
     
     def validate_batch_with_discovery(self, pdf_paths, interactive_discovery=False):
-        # Mock implementation for testing
+        # Mock implementation for testing - streamlined workflow
         results = [Mock() for _ in pdf_paths]
         for result in results:
             result.processing_successful = True

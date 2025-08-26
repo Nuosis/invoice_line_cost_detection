@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.53] - 2025-08-26
+
+### Changes
+
+Modified files:
+  - Modified: docs/VALIDATION_REFACTOR_GUIDE.md
+  - Modified: docs/design/validation_logic_specification.md
+  - Modified: processing/invoice_processor.py
+  - Modified: processing/pdf_processor.py
+  - Modified: processing/report_generator.py
+  - Modified: processing/validation_engine.py
+  - Modified: processing/validation_models.py
+  - Modified: test_validation/validation.py
+  - Modified: tests_e2e/test_configuration_management.py
+  - Modified: tests_e2e/test_interactive_workflows.py
+  - Modified: tests_e2e/test_invoice_processing.py
+  - Modified: tests_e2e/test_report_generation.py
+  - Modified: tests_e2e/test_single_file_processing.py
+  - Modified: tests_unit/test_database.py
+  - Modified: tests_unit/test_invoice_processing_refactored.py
+  - Modified: tests_unit/test_part_discovery.py
+  - Modified: tests_unit/test_report_generator.py
+  - Modified: tests_unit/test_single_file_processing.py
+  - Modified: tests_unit/test_validation_helpers.py
+New files:
+  - Added: docs/STREAMLINED_VALIDATION_REFACTORING_GUIDE.md
+  - Added: docs/design/validation_logic_specification_v2.md
+  - Added: docs/error_solving/invoice_data_extraction_investigation.md
+
+**Deployment:** 2025-08-26 11:00:04 PDT
+
+
 ## [1.0.52] - 2025-08-25
 
 ### Changes

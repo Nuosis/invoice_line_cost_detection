@@ -106,59 +106,54 @@ class TestCreateValidationConfig:
         self.mock_db_manager = Mock()
         self.mock_db_manager.get_config_value.side_effect = lambda key, default: default
     
-    def test_create_threshold_based_config(self):
-        """Test creating threshold-based validation configuration."""
-        threshold = Decimal('0.50')
-        
+    def test_create_streamlined_validation_config(self):
+        """Test creating streamlined validation configuration (v2.0)."""
         config = _create_validation_config(
-            validation_mode='threshold_based',
-            threshold=threshold,
+            validation_mode='parts_based',  # Only mode supported in v2.0
+            threshold=Decimal('0.30'),      # Used only for price_tolerance
             interactive=True,
-            collect_unknown=False,
-            db_manager=self.mock_db_manager
-        )
-        
-        assert isinstance(config, ValidationConfiguration)
-        assert config.price_discrepancy_warning_threshold == threshold
-        assert config.price_discrepancy_critical_threshold == threshold * 2
-        # For threshold_based mode, interactive_discovery should be False
-        assert config.interactive_discovery is False
-        assert config.batch_collect_unknown_parts is False
-    
-    def test_create_parts_based_config(self):
-        """Test creating parts-based validation configuration."""
-        config = _create_validation_config(
-            validation_mode='parts_based',
-            threshold=Decimal('0.30'),  # Should be ignored for parts-based mode
-            interactive=False,
             collect_unknown=True,
             db_manager=self.mock_db_manager
         )
         
         assert isinstance(config, ValidationConfiguration)
-        # interactive_discovery attribute has been removed from the system
+        # v2.0 streamlined configuration
+        assert config.price_tolerance == Decimal('0.001')  # Default precision tolerance
         assert config.batch_collect_unknown_parts is True
-        # Should use database configuration, not threshold
+        # Should use database configuration
         self.mock_db_manager.get_config_value.assert_called()
     
-    def test_config_applies_common_settings(self):
-        """Test that common settings are applied regardless of mode."""
-        for mode in ['threshold_based', 'parts_based']:
-            config = _create_validation_config(
-                validation_mode=mode,
-                threshold=Decimal('0.25'),
-                interactive=True,
-                collect_unknown=True,
-                db_manager=self.mock_db_manager
-            )
-            
-            # For threshold_based mode, batch_collect_unknown_parts should be False regardless of parameter
-            if mode == 'threshold_based':
-                # interactive_discovery attribute has been removed from the system
-                assert config.batch_collect_unknown_parts is False
-            else:  # parts_based mode
-                # interactive_discovery attribute has been removed from the system
-                assert config.batch_collect_unknown_parts is True
+    def test_config_ignores_deprecated_validation_modes(self):
+        """Test that deprecated validation modes are handled gracefully."""
+        # threshold_based mode should be converted to parts_based in v2.0
+        config = _create_validation_config(
+            validation_mode='threshold_based',  # Deprecated mode
+            threshold=Decimal('0.25'),
+            interactive=True,
+            collect_unknown=True,
+            db_manager=self.mock_db_manager
+        )
+        
+        assert isinstance(config, ValidationConfiguration)
+        # Should still create valid configuration with streamlined settings
+        assert hasattr(config, 'price_tolerance')
+        assert config.batch_collect_unknown_parts is True
+    
+    def test_config_uses_binary_validation_only(self):
+        """Test that configuration supports only binary validation."""
+        config = _create_validation_config(
+            validation_mode='parts_based',
+            threshold=Decimal('0.25'),
+            interactive=True,
+            collect_unknown=True,
+            db_manager=self.mock_db_manager
+        )
+        
+        # v2.0 streamlined: only price_tolerance matters for binary validation
+        assert hasattr(config, 'price_tolerance')
+        # Legacy fields should still exist for backward compatibility but are deprecated
+        assert hasattr(config, 'price_discrepancy_warning_threshold')
+        assert hasattr(config, 'price_discrepancy_critical_threshold')
 
 
 class TestGenerateProcessingResults:
@@ -444,7 +439,7 @@ class TestProcessInvoicesIntegration:
                     input_path=input_dir,
                     output_path=output_path,
                     output_format='csv',
-                    validation_mode='threshold_based',
+                    validation_mode='parts_based',  # v2.0 streamlined mode
                     threshold=Decimal('0.25'),
                     interactive=True,
                     collect_unknown=False,

@@ -333,24 +333,26 @@ class TestCSVAnomalyReportTemplate(unittest.TestCase):
     
     def test_render_with_anomalies(self):
         """Test rendering CSV with anomalies."""
-        # Create mock validation results with anomalies
-        anomaly = ValidationAnomaly(
-            anomaly_type=AnomalyType.PRICE_DISCREPANCY,
-            severity=SeverityLevel.CRITICAL,
-            part_number="GS0448",
-            description="Price significantly higher than authorized rate",
-            details={
-                'description': 'SHIRT WORK LS BTN COTTON',
-                'invoice_price': Decimal('15.75'),
-                'authorized_price': Decimal('15.50'),
-                'quantity': 8,
-                'difference_amount': Decimal('0.25'),
-                'percentage_difference': Decimal('1.6'),
-                'total_impact': Decimal('2.00')
-            },
-            resolution_action="Contact supplier about price increase",
-            detected_at=datetime(2025, 7, 29, 13, 45, 0)
-        )
+        # Create mock validation results with binary validation (v2.0 streamlined)
+        # Note: In v2.0, we use simple validation results instead of complex anomalies
+        validation_error = {
+            'part_number': "GS0448",
+            'validation_status': 'FAILED',  # Binary result: PASSED/FAILED/UNKNOWN
+            'description': 'SHIRT WORK LS BTN COTTON',
+            'invoice_price': Decimal('15.75'),
+            'database_price': Decimal('15.50'),
+            'quantity': 8,
+            'price_difference': Decimal('0.25'),
+            'error_message': 'Price mismatch: expected $15.50, got $15.75'
+        }
+        
+        # Mock anomaly for backward compatibility with existing report structure
+        anomaly = Mock()
+        anomaly.part_number = "GS0448"
+        anomaly.severity = "FAILED"  # v2.0: Use validation status instead of severity
+        anomaly.description = "Price mismatch: expected $15.50, got $15.75"
+        anomaly.details = validation_error
+        anomaly.detected_at = datetime(2025, 7, 29, 13, 45, 0)
         
         result = Mock(spec=InvoiceValidationResult)
         result.invoice_number = "5790256943"
@@ -379,11 +381,11 @@ class TestCSVAnomalyReportTemplate(unittest.TestCase):
         for column in expected_columns:
             self.assertIn(column, header)
         
-        # Check data row
+        # Check data row (v2.0 streamlined validation)
         data_row = lines[1]
         self.assertIn("5790256943", data_row)
         self.assertIn("GS0448", data_row)
-        self.assertIn("CRITICAL", data_row)
+        self.assertIn("FAILED", data_row)  # v2.0: Binary validation status
     
     def test_render_empty_results(self):
         """Test rendering CSV with no anomalies."""
@@ -666,15 +668,14 @@ class TestComprehensiveReportGenerator(unittest.TestCase):
         mock_datetime.now.return_value = datetime(2025, 7, 29, 13, 45, 0)
         mock_datetime.strftime = datetime.strftime
         
-        # Create mock validation results
-        anomaly = ValidationAnomaly(
-            anomaly_type=AnomalyType.PRICE_DISCREPANCY,
-            severity=SeverityLevel.CRITICAL,
-            part_number="GS0448",
-            description="Test anomaly",
-            details={'total_impact': Decimal('10.00')},
-            detected_at=datetime(2025, 7, 29, 13, 45, 0)
-        )
+        # Create mock validation results (v2.0 streamlined)
+        # Mock anomaly for backward compatibility with existing report structure
+        anomaly = Mock()
+        anomaly.part_number = "GS0448"
+        anomaly.severity = "FAILED"  # v2.0: Binary validation status
+        anomaly.description = "Price validation failed"
+        anomaly.details = {'total_impact': Decimal('10.00')}
+        anomaly.detected_at = datetime(2025, 7, 29, 13, 45, 0)
         
         result = Mock(spec=InvoiceValidationResult)
         result.invoice_number = "5790256943"

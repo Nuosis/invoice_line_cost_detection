@@ -143,12 +143,12 @@ class TestConfigurationManagement(unittest.TestCase):
         # Initialize database manager
         self.db_manager = DatabaseManager(str(self.db_path))
         
-        # Test setting validation mode (simulates: config set validation_mode threshold_based)
-        self.db_manager.set_config_value('validation_mode', 'threshold_based')
-        
+        # Test setting validation mode (simulates: config set validation_mode parts_based)
+        self.db_manager.set_config_value('validation_mode', 'parts_based')  # v2.0: Only parts_based mode
+
         # Verify the value was set
         updated_value = self.db_manager.get_config_value('validation_mode')
-        self.assertEqual(updated_value, 'threshold_based')
+        self.assertEqual(updated_value, 'parts_based')  # v2.0: Only parts_based mode
         
         # Test setting output format (simulates: config set default_output_format json)
         self.db_manager.set_config_value('default_output_format', 'json')
@@ -373,10 +373,10 @@ class TestConfigurationManagement(unittest.TestCase):
         original_value = self.db_manager.get_config_value('validation_mode')
         self.assertEqual(original_value, 'parts_based')
         
-        # Change the value
-        self.db_manager.set_config_value('validation_mode', 'threshold_based')
+        # Change the value (v2.0 streamlined)
+        self.db_manager.set_config_value('validation_mode', 'parts_based')  # v2.0: Only parts_based mode
         modified_value = self.db_manager.get_config_value('validation_mode')
-        self.assertEqual(modified_value, 'threshold_based')
+        self.assertEqual(modified_value, 'parts_based')  # v2.0: Only parts_based mode
         
         # Reset to default (simulates: config reset validation_mode)
         self.db_manager.reset_config_to_default('validation_mode')
@@ -400,14 +400,14 @@ class TestConfigurationManagement(unittest.TestCase):
         # Initialize database manager
         self.db_manager = DatabaseManager(str(self.db_path))
         
-        # Modify multiple configurations
-        self.db_manager.set_config_value('validation_mode', 'threshold_based')
+        # Modify multiple configurations (v2.0 streamlined)
+        self.db_manager.set_config_value('validation_mode', 'parts_based')  # v2.0: Only parts_based mode
         self.db_manager.set_config_value('default_output_format', 'json')
         self.db_manager.set_config_value('interactive_discovery', False)
         self.db_manager.set_config_value('price_tolerance', 0.10)
         
-        # Verify modifications
-        self.assertEqual(self.db_manager.get_config_value('validation_mode'), 'threshold_based')
+        # Verify modifications (v2.0 streamlined)
+        self.assertEqual(self.db_manager.get_config_value('validation_mode'), 'parts_based')  # v2.0: Only parts_based mode
         self.assertEqual(self.db_manager.get_config_value('default_output_format'), 'json')
         self.assertFalse(self.db_manager.get_config_value('interactive_discovery'))
         self.assertEqual(self.db_manager.get_config_value('price_tolerance'), 0.10)
@@ -439,7 +439,7 @@ class TestConfigurationManagement(unittest.TestCase):
         
         # Modify several configurations
         modifications = {
-            'validation_mode': 'threshold_based',
+            'validation_mode': 'parts_based',  # v2.0: Only parts_based mode
             'default_output_format': 'json',
             'interactive_discovery': False,
             'price_tolerance': 0.15,
@@ -549,7 +549,7 @@ class TestConfigurationManagement(unittest.TestCase):
         
         # Set some configuration values
         test_configs = {
-            'validation_mode': 'threshold_based',
+            'validation_mode': 'parts_based',  # v2.0: Only parts_based mode
             'interactive_discovery': False,
             'price_tolerance': 0.075,
             'custom_persistent_test': 'persistent_value'

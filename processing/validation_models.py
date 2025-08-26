@@ -37,22 +37,22 @@ class AnomalyType(str, Enum):
 @dataclass
 class ValidationConfiguration:
     """
-    Minimal configuration model for validation behavior.
-
-    Tests expect the following attributes to exist and be settable:
-    - interactive_discovery: bool
-    - batch_collect_unknown_parts: bool
-    - price_discrepancy_warning_threshold: Decimal
-    - price_discrepancy_critical_threshold: Decimal
+    Streamlined configuration for v2.0 validation workflow.
+    
+    Simplified to support only binary validation (PASSED/FAILED/UNKNOWN)
+    following the KISS principle from validation_logic_specification_v2.md.
     """
-    # Price-related thresholds
+    # Price validation (binary only - match or no match)
     price_tolerance: Decimal = Decimal("0.001")
-    price_discrepancy_warning_threshold: Decimal = Decimal("1.00")
-    price_discrepancy_critical_threshold: Decimal = Decimal("5.00")
-
-    # Discovery behavior toggles
+    
+    # Discovery behavior (always enabled for streamlined workflow)
     interactive_discovery: bool = True
     batch_collect_unknown_parts: bool = True
+    
+    # Legacy attributes kept for backward compatibility with existing tests
+    # These are deprecated and should not be used in new code
+    price_discrepancy_warning_threshold: Decimal = Decimal("1.00")  # DEPRECATED
+    price_discrepancy_critical_threshold: Decimal = Decimal("5.00")  # DEPRECATED
 
 
 @dataclass

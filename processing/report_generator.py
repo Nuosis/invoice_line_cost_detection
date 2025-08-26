@@ -450,11 +450,18 @@ class SimpleReportGenerator:
             expected_total = error_data.get('expected_total', 0)
             delta = expected_total - actual_total
         else:
-            # Valid line - extract from part data
-            quantity = line_fields.get('quantity', 1)
-            actual_rate = db_fields.get('authorized_price', 0)
+            # Valid line - extract from part data with proper defaults
+            quantity = line_fields.get('quantity', 1) or 1
+            actual_rate = db_fields.get('authorized_price', 0) or 0
             expected_rate = actual_rate  # Same for valid lines
-            actual_total = line_fields.get('total', 0)
+            
+            # Calculate totals if not provided
+            line_total = line_fields.get('total', 0) or 0
+            if line_total > 0:
+                actual_total = line_total
+            else:
+                actual_total = actual_rate * quantity
+            
             expected_total = actual_total  # Same for valid lines
             delta = 0.0
         
@@ -466,11 +473,11 @@ class SimpleReportGenerator:
             'Description': description,
             'Item Type': item_type,
             'Quantity': str(quantity) if quantity else '',
-            'Actual Rate': f"${actual_rate:.2f}" if actual_rate is not None else '',
-            'Actual Total': f"${actual_total:.2f}" if actual_total is not None else '',
-            'Expected Rate': f"${expected_rate:.2f}" if expected_rate is not None else '',
-            'Expected Total': f"${expected_total:.2f}" if expected_total is not None else '',
-            'Delta': f"${delta:.2f}" if delta is not None else '',
+            'Actual Rate': f"${actual_rate:.2f}" if actual_rate is not None else '$0.00',
+            'Actual Total': f"${actual_total:.2f}" if actual_total is not None else '$0.00',
+            'Expected Rate': f"${expected_rate:.2f}" if expected_rate is not None else '$0.00',
+            'Expected Total': f"${expected_total:.2f}" if expected_total is not None else '$0.00',
+            'Delta': f"${delta:.2f}" if delta is not None else '$0.00',
             'Status': status,
             'Raw Text': raw_text
         }

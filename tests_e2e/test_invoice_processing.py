@@ -412,13 +412,13 @@ class TestInvoiceProcessing(unittest.TestCase):
         except Exception as e:
             self.fail(f"Unknown parts collection failed for {test_pdf.name}: {str(e)}")
     
-    def test_threshold_based_validation_real_invoices(self):
+    def test_parts_based_validation_real_invoices(self):
         """
-        Test threshold-based validation mode with real invoices.
+        Test parts-based validation mode with real invoices (v2.0 streamlined).
         """
         # Setup components
         self._setup_test_components()
-        # No need to setup parts for threshold mode
+        self._setup_test_parts()  # v2.0: Always need parts for validation
         
         # Use the first available PDF file
         test_pdf = self.available_pdfs[0]
@@ -427,15 +427,14 @@ class TestInvoiceProcessing(unittest.TestCase):
             # Process the real PDF file
             line_items = self.pdf_processor.extract_line_items(str(test_pdf))
             
-            # Create validation engine and process with threshold mode
+            # Create validation engine and process with parts-based mode (v2.0 streamlined)
             validation_engine = ValidationEngine(self.db_manager)
             results = validation_engine.validate_invoice_items(
                 line_items,
-                validation_mode="threshold_based",
-                threshold=Decimal("20.00")
+                validation_mode="parts_based"  # v2.0: Only parts_based mode
             )
             
-            # Verify threshold-based results
+            # Verify parts-based results (v2.0 streamlined)
             self.assertIsInstance(results, list)
             
             # If we have results, verify their structure
@@ -444,12 +443,12 @@ class TestInvoiceProcessing(unittest.TestCase):
                     self.assertIsInstance(result, ProcessingResult)
                     self.assertIsNotNone(result.validation_result)
                     
-                    # Check if any items exceed threshold
+                    # v2.0: Binary validation results (PASSED/FAILED/UNKNOWN)
                     if not result.is_valid:
-                        self.assertEqual(result.issue_type, "THRESHOLD_EXCEEDED")
+                        self.assertIn(result.issue_type, ["PRICE_MISMATCH", "UNKNOWN_PART"])
         
         except Exception as e:
-            self.fail(f"Threshold validation failed for {test_pdf.name}: {str(e)}")
+            self.fail(f"Parts-based validation failed for {test_pdf.name}: {str(e)}")
     
     def test_batch_processing_real_invoices(self):
         """

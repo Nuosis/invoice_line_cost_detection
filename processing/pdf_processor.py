@@ -288,42 +288,60 @@ class PDFProcessor:
         Raises:
             TextExtractionError: If text extraction fails
         """
+        # HYPOTHESIS 1 LOGGING: PDF Text Extraction
+        self.logger.info(f"[H1] Starting text extraction from PDF: {pdf_path.name}")
+        
         try:
             full_text = ""
             page_count = 0
             
             with pdfplumber.open(pdf_path) as pdf:
+                self.logger.info(f"[H1] PDF opened successfully, found {len(pdf.pages)} pages")
+                
                 for page_num, page in enumerate(pdf.pages, 1):
                     try:
                         page_text = page.extract_text()
                         if page_text:
+                            page_text_length = len(page_text)
                             full_text += page_text + "\n"
+                            self.logger.info(f"[H1] Page {page_num}: extracted {page_text_length} characters")
+                            # Log first 200 characters of each page for verification
+                            preview = page_text[:200].replace('\n', ' ').strip()
+                            self.logger.info(f"[H1] Page {page_num} preview: {preview}...")
+                        else:
+                            self.logger.warning(f"[H1] Page {page_num}: no text extracted (empty page_text)")
                         page_count += 1
                     except Exception as e:
-                        self.logger.warning(
-                            f"Failed to extract text from page {page_num}: {e}"
-                        )
+                        self.logger.error(f"[H1] Failed to extract text from page {page_num}: {e}")
                         continue
             
+            total_length = len(full_text)
+            stripped_length = len(full_text.strip())
+            self.logger.info(f"[H1] Text extraction complete: {total_length} total chars, {stripped_length} after strip")
+            
             if not full_text.strip():
+                self.logger.error(f"[H1] CRITICAL: No text extracted from PDF - full_text is empty after strip")
                 raise TextExtractionError(
                     "No text could be extracted from PDF",
                     pdf_path=str(pdf_path)
                 )
             
             if len(full_text.strip()) < 100:
+                self.logger.error(f"[H1] CRITICAL: Extracted text too short ({len(full_text)} characters)")
                 raise TextExtractionError(
                     f"Extracted text is too short ({len(full_text)} characters), "
                     "may indicate extraction failure",
                     pdf_path=str(pdf_path)
                 )
             
-            self.logger.debug(f"Extracted {len(full_text)} characters from {page_count} pages")
+            self.logger.info(f"[H1] SUCCESS: Extracted {len(full_text)} characters from {page_count} pages")
             return full_text
             
         except Exception as e:
             if isinstance(e, TextExtractionError):
+                self.logger.error(f"[H1] Text extraction failed with TextExtractionError: {e}")
                 raise
+            self.logger.error(f"[H1] Text extraction failed with unexpected error: {e}")
             raise TextExtractionError(
                 f"Error during text extraction: {str(e)}",
                 pdf_path=str(pdf_path)
@@ -343,6 +361,9 @@ class PDFProcessor:
         Raises:
             TextExtractionError: If table extraction fails
         """
+        # HYPOTHESIS 2 LOGGING: Line Item Parsing Logic - Table Extraction
+        self.logger.info(f"[H2] Starting table extraction from PDF: {pdf_path.name}")
+        
         try:
             import camelot
             import pandas as pd
@@ -355,34 +376,39 @@ class PDFProcessor:
             
             # Try lattice method first
             try:
+                self.logger.info(f"[H2] Attempting camelot lattice method...")
                 lattice_tables = camelot.read_pdf(str(pdf_path), flavor='lattice', pages='all')
-                self.logger.debug(f"Lattice method found {len(lattice_tables)} tables")
+                self.logger.info(f"[H2] Lattice method found {len(lattice_tables)} tables")
             except Exception as e:
-                self.logger.warning(f"Camelot lattice method failed: {e}")
+                self.logger.error(f"[H2] Camelot lattice method failed: {e}")
             
             # Try stream method
             try:
+                self.logger.info(f"[H2] Attempting camelot stream method...")
                 stream_tables = camelot.read_pdf(str(pdf_path), flavor='stream', pages='all')
-                self.logger.debug(f"Stream method found {len(stream_tables)} tables")
+                self.logger.info(f"[H2] Stream method found {len(stream_tables)} tables")
             except Exception as e:
-                self.logger.warning(f"Camelot stream method failed: {e}")
+                self.logger.error(f"[H2] Camelot stream method failed: {e}")
             
             # Choose the better result based on table structure quality
             camelot_tables = self._choose_best_tables(lattice_tables, stream_tables)
             
             if not camelot_tables:
-                self.logger.error("Both camelot methods failed or returned no tables")
+                self.logger.error("[H2] CRITICAL: Both camelot methods failed or returned no tables")
                 return []
+            
+            self.logger.info(f"[H2] Selected {len(camelot_tables)} tables for processing")
             
             # Convert camelot tables to our format
             for table_idx, camelot_table in enumerate(camelot_tables):
                 try:
                     # Get the DataFrame and convert to list of lists
                     df = camelot_table.df
+                    self.logger.info(f"[H2] Processing table {table_idx + 1}: {df.shape[0]} rows x {df.shape[1]} columns")
                     
                     # Convert DataFrame to list of lists
                     table_data = []
-                    for _, row in df.iterrows():
+                    for row_idx, (_, row) in enumerate(df.iterrows()):
                         # Clean up cells - strip whitespace and handle NaN values
                         cleaned_row = [
                             str(cell).strip() if pd.notna(cell) and str(cell).strip() else ""
@@ -391,31 +417,34 @@ class PDFProcessor:
                         # Only add rows that have at least one non-empty cell
                         if any(cell for cell in cleaned_row):
                             table_data.append(cleaned_row)
+                            if row_idx < 3:  # Log first 3 rows for verification
+                                self.logger.info(f"[H2] Table {table_idx + 1} row {row_idx + 1}: {cleaned_row}")
                     
                     if table_data:  # Only add non-empty tables
                         all_tables.append(table_data)
-                        self.logger.debug(
-                            f"Processed table {table_idx + 1}: "
-                            f"{len(table_data)} rows, {len(table_data[0]) if table_data else 0} columns"
-                        )
+                        self.logger.info(f"[H2] Table {table_idx + 1} processed: {len(table_data)} valid rows")
+                    else:
+                        self.logger.warning(f"[H2] Table {table_idx + 1} had no valid rows after cleaning")
                         
                 except Exception as e:
-                    self.logger.warning(f"Error processing table {table_idx + 1}: {e}")
+                    self.logger.error(f"[H2] Error processing table {table_idx + 1}: {e}")
                     continue
             
             if not all_tables:
-                self.logger.warning("No tables found in PDF")
+                self.logger.error("[H2] CRITICAL: No tables found in PDF after processing")
             else:
-                self.logger.info(f"Extracted {len(all_tables)} tables using camelot-py")
+                self.logger.info(f"[H2] SUCCESS: Extracted {len(all_tables)} tables using camelot-py")
             
             return all_tables
             
         except ImportError:
-            self.logger.error("camelot-py not installed. Please install with: pip install camelot-py[cv]")
+            self.logger.error("[H2] CRITICAL: camelot-py not installed. Please install with: pip install camelot-py[cv]")
             return []
         except Exception as e:
             if isinstance(e, TextExtractionError):
+                self.logger.error(f"[H2] Table extraction failed with TextExtractionError: {e}")
                 raise
+            self.logger.error(f"[H2] Table extraction failed with unexpected error: {e}")
             raise TextExtractionError(
                 f"Error during table extraction with camelot: {str(e)}",
                 pdf_path=str(pdf_path)
@@ -769,42 +798,67 @@ class PDFProcessor:
         Returns:
             List of LineItem objects extracted from tables
         """
+        # HYPOTHESIS 2 LOGGING: Line Item Parsing Logic - Extract from Tables
+        self.logger.info(f"[H2] Starting line item extraction from {len(tables)} tables")
+        
         line_items = []
         
         for table_idx, table in enumerate(tables):
             if not table:
+                self.logger.warning(f"[H2] Table {table_idx + 1} is empty, skipping")
                 continue
                 
-            self.logger.debug(f"Processing table {table_idx + 1} with {len(table)} rows")
+            self.logger.info(f"[H2] Processing table {table_idx + 1} with {len(table)} rows")
             
             # Find the header row to identify column positions
             header_row_idx = self._find_header_row(table)
             if header_row_idx is None:
-                self.logger.debug(f"No header row found in table {table_idx + 1}, skipping")
+                self.logger.warning(f"[H2] No header row found in table {table_idx + 1}, skipping")
                 continue
             
             header_row = table[header_row_idx]
+            self.logger.info(f"[H2] Table {table_idx + 1} header row at index {header_row_idx}: {header_row}")
+            
             column_mapping = self._map_table_columns(header_row)
             
             if not column_mapping:
-                self.logger.debug(f"No recognizable columns found in table {table_idx + 1}, skipping")
+                self.logger.warning(f"[H2] No recognizable columns found in table {table_idx + 1}, skipping")
                 continue
             
-            self.logger.debug(f"Table {table_idx + 1} column mapping: {column_mapping}")
+            self.logger.info(f"[H2] Table {table_idx + 1} column mapping: {column_mapping}")
             
             # Process data rows (skip header and any rows before it)
+            data_rows_processed = 0
+            valid_line_items = 0
+            
             for row_idx in range(header_row_idx + 1, len(table)):
                 row = table[row_idx]
                 
                 # Skip empty rows or rows that don't have enough columns
                 if not row or len(row) < max(column_mapping.values()) + 1:
+                    self.logger.debug(f"[H2] Table {table_idx + 1} row {row_idx + 1}: skipped (empty or insufficient columns)")
                     continue
+                
+                data_rows_processed += 1
+                if data_rows_processed <= 3:  # Log first 3 data rows for verification
+                    self.logger.info(f"[H2] Table {table_idx + 1} data row {row_idx + 1}: {row}")
                 
                 line_item = self._parse_table_row_to_line_item(row, column_mapping, row_idx + 1)
                 if line_item:
+                    valid_line_items += 1
                     line_items.append(line_item)
+                    if valid_line_items <= 3:  # Log first 3 parsed line items
+                        self.logger.info(f"[H2] Parsed line item {valid_line_items}: code={line_item.item_code}, desc={line_item.description}, rate={line_item.rate}")
+                else:
+                    self.logger.debug(f"[H2] Table {table_idx + 1} row {row_idx + 1}: failed to parse as line item")
+            
+            self.logger.info(f"[H2] Table {table_idx + 1} results: {data_rows_processed} data rows processed, {valid_line_items} valid line items extracted")
         
-        self.logger.info(f"Extracted {len(line_items)} line items from {len(tables)} tables")
+        if not line_items:
+            self.logger.error(f"[H2] CRITICAL: No line items extracted from any of the {len(tables)} tables")
+        else:
+            self.logger.info(f"[H2] SUCCESS: Extracted {len(line_items)} line items from {len(tables)} tables")
+        
         return line_items
     
     def _find_header_row(self, table: List[List[str]]) -> Optional[int]:
@@ -909,6 +963,9 @@ class PDFProcessor:
         Returns:
             LineItem object if parsing successful, None otherwise
         """
+        # HYPOTHESIS 2 LOGGING: Line Item Parsing Logic - Parse Row to LineItem
+        self.logger.debug(f"[H2] Parsing row {line_number} with mapping {column_mapping}")
+        
         try:
             # Extract data based on column mapping
             item_code = None
@@ -921,32 +978,39 @@ class PDFProcessor:
             # Get item code
             if 'item_code' in column_mapping:
                 item_code = row[column_mapping['item_code']].strip() if row[column_mapping['item_code']] else None
+                self.logger.debug(f"[H2] Row {line_number} item_code: '{item_code}'")
             
             # Get description
             if 'description' in column_mapping:
                 description = row[column_mapping['description']].strip() if row[column_mapping['description']] else None
+                self.logger.debug(f"[H2] Row {line_number} description: '{description}'")
             
             # Get item type
             if 'type' in column_mapping:
                 item_type = row[column_mapping['type']].strip() if row[column_mapping['type']] else None
+                self.logger.debug(f"[H2] Row {line_number} item_type: '{item_type}'")
             
             # Get rate
             if 'rate' in column_mapping:
                 rate_str = row[column_mapping['rate']].strip() if row[column_mapping['rate']] else None
+                self.logger.debug(f"[H2] Row {line_number} rate_str: '{rate_str}'")
                 if rate_str:
                     try:
                         rate = Decimal(rate_str)
+                        self.logger.debug(f"[H2] Row {line_number} parsed rate: {rate}")
                     except (ValueError, InvalidOperation):
-                        self.logger.warning(f"Invalid rate value '{rate_str}' at line {line_number}")
+                        self.logger.warning(f"[H2] Row {line_number} invalid rate value '{rate_str}'")
             
             # Get total
             if 'total' in column_mapping:
                 total_str = row[column_mapping['total']].strip() if row[column_mapping['total']] else None
+                self.logger.debug(f"[H2] Row {line_number} total_str: '{total_str}'")
                 if total_str:
                     try:
                         total = Decimal(total_str)
+                        self.logger.debug(f"[H2] Row {line_number} parsed total: {total}")
                     except (ValueError, InvalidOperation):
-                        self.logger.warning(f"Invalid total value '{total_str}' at line {line_number}")
+                        self.logger.warning(f"[H2] Row {line_number} invalid total value '{total_str}'")
             
             # Get quantity if available
             if 'quantity' in column_mapping:
@@ -954,11 +1018,14 @@ class PDFProcessor:
                 if qty_str:
                     try:
                         quantity = int(float(qty_str))
+                        self.logger.debug(f"[H2] Row {line_number} parsed quantity: {quantity}")
                     except (ValueError, TypeError):
                         quantity = 1  # Default to 1 if conversion fails
+                        self.logger.debug(f"[H2] Row {line_number} defaulted quantity to 1")
             
             # Skip rows that don't have essential data
             if not description or not rate:
+                self.logger.debug(f"[H2] Row {line_number} SKIPPED: missing essential data (description='{description}', rate='{rate}')")
                 return None
             
             # Create LineItem
@@ -973,10 +1040,11 @@ class PDFProcessor:
                 raw_text=' | '.join(row)  # Join row cells for debugging
             )
             
+            self.logger.debug(f"[H2] Row {line_number} SUCCESS: created LineItem with code='{item_code}', desc='{description}', rate={rate}")
             return line_item
             
         except Exception as e:
-            self.logger.warning(f"Error parsing table row at line {line_number}: {e}")
+            self.logger.error(f"[H2] Row {line_number} ERROR: Exception parsing table row: {e}")
             return None
     
     def _parse_invoice_metadata(self, text: str, invoice_data: InvoiceData) -> None:

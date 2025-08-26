@@ -159,22 +159,22 @@ class SingleFileProcessingE2ETests(unittest.TestCase):
         output_content = self.output_csv.read_text()
         self.assertGreater(len(output_content), 0)
     
-    def test_process_single_pdf_file_threshold_based(self):
-        """Test processing a single PDF file with threshold-based validation."""
-        # Process with threshold-based validation
+    def test_process_single_pdf_file_parts_based_additional(self):
+        """Test processing a single PDF file with parts-based validation (v2.0 streamlined - additional test)."""
+        # Process with parts-based validation (v2.0 streamlined)
         results = _process_invoices(
             input_path=self.test_pdf,
             output_path=self.output_csv,
             output_format='csv',
-            validation_mode='threshold_based',
-            threshold=Decimal('0.25'),
+            validation_mode='parts_based',  # v2.0: Only parts_based mode
+            threshold=Decimal('0.25'),  # v2.0: Used as price_tolerance
             interactive=False,
             collect_unknown=False,
-            session_id=f"test_threshold_{self.test_id}",
+            session_id=f"test_parts_additional_{self.test_id}",
             db_manager=self.db_manager
         )
         
-        # Verify processing completed
+        # Verify processing completed (v2.0 streamlined)
         self.assertIsInstance(results, dict)
         self.assertIn('files_processed', results)
         

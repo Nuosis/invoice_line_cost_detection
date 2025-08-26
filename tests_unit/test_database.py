@@ -364,12 +364,12 @@ class TestConfigurationOperations(unittest.TestCase):
         time.sleep(0.5)
         
         # Update the config
-        config.value = "threshold_based"
+        config.value = "parts_based"  # v2.0 streamlined mode
         config.description = "Updated description"
         
         updated_config = self.db_manager.update_config(config)
         
-        self.assertEqual(updated_config.value, "threshold_based")
+        self.assertEqual(updated_config.value, "parts_based")  # v2.0 streamlined mode
         self.assertEqual(updated_config.description, "Updated description")
         
         # Verify that the last_updated field was updated (should be different from original)

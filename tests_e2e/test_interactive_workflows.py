@@ -333,8 +333,8 @@ class TestInteractiveWorkflows(unittest.TestCase):
             )
             self.assertTrue(has_results, "Should have some validation results")
             
-            # Test anomaly categorization
-            total_anomalies = (
+            # Test validation error categorization (v2.0 streamlined)
+            total_errors = (
                 len(validation_result.critical_anomalies) +
                 len(validation_result.warning_anomalies) +
                 len(validation_result.informational_anomalies)

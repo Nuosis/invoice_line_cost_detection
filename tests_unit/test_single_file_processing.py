@@ -228,7 +228,7 @@ class TestSingleFileProcessingIntegration(unittest.TestCase):
             input_path=self.test_pdf,
             output_path=self.output_file,
             output_format='json',
-            validation_mode='threshold_based',
+            validation_mode='parts_based',  # v2.0 streamlined mode
             threshold=Decimal('0.25'),
             interactive=False,
             collect_unknown=False,
@@ -250,7 +250,7 @@ class TestSingleFileProcessingIntegration(unittest.TestCase):
             # If not found, the test setup might be different - check the call
             self.fail("Could not find validation_mode argument in mock call")
         
-        self.assertEqual(validation_mode, 'threshold_based')
+        self.assertEqual(validation_mode, 'parts_based')  # v2.0 streamlined mode
         self.assertEqual(threshold, Decimal('0.25'))
         
         # Verify results

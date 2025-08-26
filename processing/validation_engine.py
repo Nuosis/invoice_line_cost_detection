@@ -251,11 +251,18 @@ class ValidationEngine:
     
     def _validate_single_part(self, part_data: Dict[str, Any], validation_mode: str) -> Dict[str, Any]:
         """
-        Validate a single part against the database.
+        Simple, effective validation following v2.0 streamlined workflow.
+        
+        Steps:
+        1. Extract part components
+        2. Look up part by composite key
+        3. If not found, trigger discovery
+        4. Compare prices (binary match/no match)
+        5. Return validation result
         
         Args:
             part_data: Part data from extraction JSON
-            validation_mode: Validation mode ('parts_based' or 'threshold_based')
+            validation_mode: Validation mode (ignored - always uses streamlined approach)
             
         Returns:
             Validated part data with validation status
@@ -263,10 +270,11 @@ class ValidationEngine:
         db_fields = part_data.get('database_fields', {})
         line_fields = part_data.get('lineitem_fields', {})
         
+        # Extract components
+        item_type = db_fields.get('item_type')
+        description = db_fields.get('description', '')
         part_number = db_fields.get('part_number')
         extracted_price = db_fields.get('authorized_price')
-        description = db_fields.get('description', '')
-        item_type = db_fields.get('item_type')
         
         # Create validated part structure
         validated_part = {
@@ -290,91 +298,39 @@ class ValidationEngine:
             return validated_part
         
         try:
-            # Look up part in database
+            # Composite key lookup
             existing_part = self.db_manager.find_part_by_components(item_type, description, part_number)
             
+            if not existing_part:
+                # Interactive discovery (fail-fast for unknown parts)
+                try:
+                    discovery_result = self.discovery_service.discover_and_add_parts({
+                        'parts': [part_data]
+                    })
+                    existing_part = self.db_manager.find_part_by_components(item_type, description, part_number)
+                except Exception as e:
+                    self.logger.debug(f"Discovery failed for {part_number}: {e}")
+            
             if existing_part:
-                # Part exists in database
-                validated_part['database_price'] = float(existing_part.authorized_price)
+                # Price comparison (binary validation)
+                authorized_price = float(existing_part.authorized_price)
+                validated_part['database_price'] = authorized_price
                 
-                if validation_mode == 'parts_based':
-                    # Parts-based validation: compare prices
-                    if extracted_price is not None:
-                        price_diff = abs(float(extracted_price) - float(existing_part.authorized_price))
-                        validated_part['price_difference'] = price_diff
-                        
-                        if price_diff <= float(self.config.price_tolerance):
-                            validated_part['validation_status'] = 'PASSED'
-                        elif price_diff <= float(self.config.price_discrepancy_warning_threshold):
-                            validated_part['validation_status'] = 'FAILED'
-                            validated_part['validation_errors'].append(f'Price discrepancy: ${price_diff:.2f}')
-                        else:
-                            validated_part['validation_status'] = 'FAILED'
-                            validated_part['validation_errors'].append(f'Critical price discrepancy: ${price_diff:.2f}')
-                    else:
-                        validated_part['validation_status'] = 'PASSED'  # No price to compare
-                
-                elif validation_mode == 'threshold_based':
-                    # Threshold-based validation: check if price is within reasonable bounds
-                    if extracted_price is not None:
-                        if float(extracted_price) > 0:
-                            validated_part['validation_status'] = 'PASSED'
-                        else:
-                            validated_part['validation_status'] = 'FAILED'
-                            validated_part['validation_errors'].append('Invalid price: must be greater than 0')
+                if extracted_price is not None:
+                    price_diff = abs(float(extracted_price) - authorized_price)
+                    validated_part['price_difference'] = price_diff
+                    
+                    if price_diff <= float(self.config.price_tolerance):
+                        validated_part['validation_status'] = 'PASSED'
                     else:
                         validated_part['validation_status'] = 'FAILED'
-                        validated_part['validation_errors'].append('Missing price')
-                
+                        validated_part['validation_errors'].append(f'Price mismatch: expected ${authorized_price}, got ${extracted_price}')
+                else:
+                    validated_part['validation_status'] = 'PASSED'  # No price to compare
             else:
-                # Part not found in database - ALWAYS prompt user to add it
-                try:
-                    # Create part data for discovery service
-                    discovery_part_data = {
-                        'database_fields': {
-                            'part_number': part_number,
-                            'authorized_price': extracted_price,
-                            'description': description,
-                            'item_type': item_type
-                        },
-                        'lineitem_fields': line_fields
-                    }
-                    
-                    # Use discovery service to handle unknown part
-                    discovery_result = self.discovery_service.discover_and_add_parts({
-                        'parts': [discovery_part_data]
-                    })
-                    
-                    # Try to find the part again after discovery
-                    existing_part = self.db_manager.find_part_by_components(item_type, description, part_number)
-                    
-                    if existing_part:
-                        # Part was added, now validate it
-                        validated_part['database_price'] = float(existing_part.authorized_price)
-                        
-                        if validation_mode == 'parts_based' and extracted_price is not None:
-                            price_diff = abs(float(extracted_price) - float(existing_part.authorized_price))
-                            validated_part['price_difference'] = price_diff
-                            
-                            if price_diff <= float(self.config.price_tolerance):
-                                validated_part['validation_status'] = 'PASSED'
-                            elif price_diff <= float(self.config.price_discrepancy_warning_threshold):
-                                validated_part['validation_status'] = 'FAILED'
-                                validated_part['validation_errors'].append(f'Price discrepancy: ${price_diff:.2f}')
-                            else:
-                                validated_part['validation_status'] = 'FAILED'
-                                validated_part['validation_errors'].append(f'Critical price discrepancy: ${price_diff:.2f}')
-                        else:
-                            validated_part['validation_status'] = 'PASSED'
-                    else:
-                        # User chose not to add the part
-                        validated_part['validation_status'] = 'UNKNOWN'
-                        validated_part['validation_errors'].append('Part not found in database (user skipped adding)')
-                        
-                except Exception as e:
-                    # Discovery failed or was cancelled
-                    validated_part['validation_status'] = 'UNKNOWN'
-                    validated_part['validation_errors'].append(f'Part not found in database (discovery failed: {str(e)})')
+                # User chose not to add the part
+                validated_part['validation_status'] = 'UNKNOWN'
+                validated_part['validation_errors'].append('Part not found in database (user skipped adding)')
                 
         except Exception as e:
             validated_part['validation_status'] = 'FAILED'
@@ -394,12 +350,19 @@ class ValidationEngine:
         Returns:
             List of ProcessingResult objects for each line item
         """
+        # HYPOTHESIS 4 LOGGING: Validation Engine Input
+        self.logger.info(f"[H4] Starting validation of {len(invoice_line_items)} invoice line items")
+        
         from processing.models import ProcessingResult
         
         validation_results = []
         mode = validation_mode or self._get_validation_mode()
         
-        for line_item in invoice_line_items:
+        self.logger.info(f"[H4] Using validation mode: {mode}")
+        
+        for i, line_item in enumerate(invoice_line_items):
+            self.logger.info(f"[H4] Processing line item {i+1}: part_number='{line_item.part_number}', description='{line_item.description}', unit_price={line_item.unit_price}")
+            
             # Convert InvoiceLineItem to part data format
             part_data = {
                 'database_fields': {
@@ -416,8 +379,12 @@ class ValidationEngine:
                 }
             }
             
+            self.logger.debug(f"[H4] Line item {i+1} converted to part_data: {part_data}")
+            
             # Validate the part
             validated_part = self._validate_single_part(part_data, mode)
+            
+            self.logger.info(f"[H4] Line item {i+1} validation result: status={validated_part.get('validation_status')}, errors={validated_part.get('validation_errors', [])}")
             
             # Convert to ProcessingResult format expected by tests
             processing_result = ProcessingResult(
@@ -431,6 +398,7 @@ class ValidationEngine:
             
             validation_results.append(processing_result)
         
+        self.logger.info(f"[H4] Validation complete: {len(validation_results)} results generated")
         return validation_results
 
     def _create_error_line(self, validated_part: Dict[str, Any], invoice_metadata: Dict[str, Any]) -> Dict[str, Any]:
@@ -444,19 +412,29 @@ class ValidationEngine:
         Returns:
             Error line dictionary for CSV export
         """
+        # Extract values with proper defaults
+        quantity = validated_part.get('quantity', 1) or 1
+        extracted_price = validated_part.get('extracted_price', 0) or 0
+        database_price = validated_part.get('database_price', 0) or 0
+        line_total = validated_part.get('total', 0) or 0
+        
+        # Calculate totals if not available
+        actual_total = line_total if line_total > 0 else (extracted_price * quantity)
+        expected_total = database_price * quantity if database_price > 0 else actual_total
+        
         return {
             'invoice_number': invoice_metadata.get('invoice_number', 'UNKNOWN'),
             'invoice_date': invoice_metadata.get('invoice_date', ''),
             'part_number': validated_part.get('part_number', ''),
             'description': validated_part.get('description', ''),
-            'extracted_price': validated_part.get('extracted_price'),
-            'database_price': validated_part.get('database_price'),
-            'price_difference': validated_part.get('price_difference'),
+            'line_number': validated_part.get('line_number'),
+            'qty': quantity,
+            'actual_price': extracted_price,
+            'expected_price': database_price,
+            'actual_total': actual_total,
+            'expected_total': expected_total,
             'validation_status': validated_part.get('validation_status', ''),
             'validation_errors': '; '.join(validated_part.get('validation_errors', [])),
-            'line_number': validated_part.get('line_number'),
-            'quantity': validated_part.get('quantity'),
-            'total': validated_part.get('total'),
             'raw_text': validated_part.get('raw_text', '')
         }
 
