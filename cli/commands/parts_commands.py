@@ -912,7 +912,7 @@ def _interactive_add_part(ctx):
         notes = click.prompt("Notes (optional)", default="", type=str)
         
         # Call the add command
-        ctx.invoke(add,
+        click.get_current_context().invoke(add,
                   part_number=part_number,
                   price=price,
                   description=description or None,
@@ -1002,7 +1002,7 @@ def _interactive_export_parts(ctx):
         format_type = formats[format_choice - 1]
         
         # Call the export command
-        ctx.invoke(export,
+        click.get_current_context().invoke(export,
                   output_file=output_file,
                   category=category or None,
                   active_only=not include_inactive,

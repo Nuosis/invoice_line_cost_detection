@@ -69,7 +69,7 @@ def cli(ctx, verbose, quiet, config_file, database):
         # Check if we should run in simple mode (for non-technical users)
         if len(sys.argv) == 1:  # No arguments provided
             # Run interactive processing mode
-            ctx.invoke(interactive_process)
+            click.get_current_context().invoke(interactive_process)
         else:
             click.echo(ctx.get_help())
 

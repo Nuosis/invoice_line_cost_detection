@@ -599,7 +599,7 @@ def run_interactive_config_management(ctx):
                 _interactive_reset_config(ctx)
             elif choice == menu_options[4]:
                 # Run setup wizard
-                ctx.invoke(setup, interactive=True)
+                click.get_current_context().invoke(setup, interactive=True)
             elif choice == menu_options[5]:
                 # Return to main menu
                 print_info("Returning to main menu...")
@@ -639,7 +639,7 @@ def _interactive_list_config(ctx):
         format_type = formats[format_choice - 1]
         
         # Call the list command
-        ctx.invoke(list, category=category, format=format_type)
+        click.get_current_context().invoke(list, category=category, format=format_type)
         
     except Exception as e:
         print_error(f"Failed to list configurations: {e}")
@@ -662,7 +662,7 @@ def _interactive_get_config(ctx):
         format_type = formats[format_choice - 1]
         
         # Call the get command
-        ctx.invoke(get, key=key, format=format_type)
+        click.get_current_context().invoke(get, key=key, format=format_type)
         
     except Exception as e:
         print_error(f"Failed to get configuration: {e}")
@@ -694,7 +694,7 @@ def _interactive_set_config(ctx):
         category = click.prompt("Category (optional)", default="general", type=str)
         
         # Call the set command
-        ctx.invoke(set,
+        click.get_current_context().invoke(set,
                   key=key,
                   value=value,
                   type=data_type,
@@ -716,12 +716,12 @@ def _interactive_reset_config(ctx):
         if reset_all:
             # Reset all configurations
             force = click.confirm("Skip confirmation prompts?", default=False)
-            ctx.invoke(reset, key=None, force=force)
+            click.get_current_context().invoke(reset, key=None, force=force)
         else:
             # Reset specific configuration
             key = click.prompt("Configuration key to reset", type=str)
             force = click.confirm("Skip confirmation prompt?", default=False)
-            ctx.invoke(reset, key=key, force=force)
+            click.get_current_context().invoke(reset, key=key, force=force)
         
     except Exception as e:
         print_error(f"Failed to reset configuration: {e}")
