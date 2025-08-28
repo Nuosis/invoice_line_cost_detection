@@ -276,20 +276,29 @@ class ValidationEngine:
         part_number = db_fields.get('part_number')
         extracted_price = db_fields.get('authorized_price')
         
-        # Create validated part structure
+        # Create validated part structure - PRESERVE ORIGINAL STRUCTURE for report generator
         validated_part = {
-            'part_number': part_number,
-            'description': description,
-            'item_type': item_type,
-            'extracted_price': extracted_price,
-            'database_price': None,
-            'price_difference': None,
+            # Preserve original structure that report generator expects
+            'database_fields': {
+                'part_number': part_number,
+                'description': description,
+                'item_type': item_type,
+                'authorized_price': extracted_price,
+                'category': db_fields.get('category'),
+                'source': db_fields.get('source', 'extracted'),
+                'first_seen_invoice': db_fields.get('first_seen_invoice')
+            },
+            'lineitem_fields': {
+                'line_number': line_fields.get('line_number'),
+                'quantity': line_fields.get('quantity'),
+                'total': line_fields.get('total'),
+                'raw_text': line_fields.get('raw_text')
+            },
+            # Additional validation fields
             'validation_status': 'UNKNOWN',
             'validation_errors': [],
-            'line_number': line_fields.get('line_number'),
-            'quantity': line_fields.get('quantity'),
-            'total': line_fields.get('total'),
-            'raw_text': line_fields.get('raw_text')
+            'database_price': None,
+            'price_difference': None
         }
         
         if not part_number:
@@ -350,9 +359,7 @@ class ValidationEngine:
         Returns:
             List of ProcessingResult objects for each line item
         """
-        # HYPOTHESIS 4 LOGGING: Validation Engine Input
-        self.logger.info(f"[H4] Starting validation of {len(invoice_line_items)} invoice line items")
-        
+
         from processing.models import ProcessingResult
         
         validation_results = []

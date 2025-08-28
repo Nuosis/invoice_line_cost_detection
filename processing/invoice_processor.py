@@ -487,9 +487,6 @@ class InvoiceProcessor:
             'parts': []
         }
         
-        # HYPOTHESIS 3 LOGGING: Data Structure Mapping - Convert LineItem to parts format
-        self.logger.info(f"[H3] Starting data structure mapping for {len(invoice_data.line_items)} line items")
-        
         # Convert line items to parts format
         for i, line_item in enumerate(invoice_data.line_items):
             self.logger.info(f"[H3] Processing line item {i+1}: item_code='{line_item.item_code}', rate={line_item.rate}, description='{line_item.description}'")

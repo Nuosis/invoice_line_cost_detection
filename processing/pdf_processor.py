@@ -288,9 +288,7 @@ class PDFProcessor:
         Raises:
             TextExtractionError: If text extraction fails
         """
-        # HYPOTHESIS 1 LOGGING: PDF Text Extraction
-        self.logger.info(f"[H1] Starting text extraction from PDF: {pdf_path.name}")
-        
+
         try:
             full_text = ""
             page_count = 0
@@ -361,9 +359,7 @@ class PDFProcessor:
         Raises:
             TextExtractionError: If table extraction fails
         """
-        # HYPOTHESIS 2 LOGGING: Line Item Parsing Logic - Table Extraction
-        self.logger.info(f"[H2] Starting table extraction from PDF: {pdf_path.name}")
-        
+
         try:
             import camelot
             import pandas as pd
@@ -619,7 +615,7 @@ class PDFProcessor:
         # Look for line item indicators
         text_content = ' '.join(df.astype(str).values.flatten()).upper()
         
-        # Positive indicators (line item table characteristics)
+        # CRITICAL FIX: Strong positive indicators for line item tables
         line_item_indicators = [
             'WEARER', 'ITEM', 'DESCRIPTION', 'SIZE', 'TYPE', 'QTY', 'RATE', 'TOTAL',
             'RENT', 'BILL', 'QUANTITY', 'AMOUNT', 'PRICE'
@@ -627,18 +623,44 @@ class PDFProcessor:
         
         for indicator in line_item_indicators:
             if indicator in text_content:
-                score += 15
+                score += 25  # Increased from 15 to 25 for stronger weighting
+        
+        # CRITICAL FIX: Heavy penalty for A/R balance and summary tables
+        ar_balance_indicators = [
+            'A/R BALANCES', 'CURRENT', '1-30 DAYS', '31-60 DAYS', '61-90 DAYS',
+            '91-120 DAYS', 'OVER 120 DAYS', 'TOTAL DUE'
+        ]
+        
+        ar_penalty = 0
+        for indicator in ar_balance_indicators:
+            if indicator in text_content:
+                ar_penalty += 100  # Heavy penalty for A/R balance tables
+        
+        score -= ar_penalty
         
         # Look for part number patterns (alphanumeric codes)
         import re
         part_pattern = r'\b[A-Z]{2,3}\d{3,4}[A-Z]*\b'  # Pattern like GS0448NAVY, GP0171NAVY
         part_matches = len(re.findall(part_pattern, text_content))
-        score += min(part_matches * 5, 50)  # Up to 50 points for part numbers
+        score += min(part_matches * 10, 100)  # Increased from 5 to 10, cap increased to 100
         
         # Look for numeric data (rates, quantities, totals)
         numeric_pattern = r'\b\d+\.\d{2,3}\b'  # Decimal numbers like rates
         numeric_matches = len(re.findall(numeric_pattern, text_content))
-        score += min(numeric_matches * 2, 30)  # Up to 30 points for numeric data
+        score += min(numeric_matches * 3, 50)  # Increased from 2 to 3, cap increased to 50
+        
+        # CRITICAL FIX: Bonus for tables with employee/wearer names
+        name_patterns = [
+            r'\b[A-Z][a-z]+ [A-Z][a-z]+\b',  # First Last name pattern
+            r'\b[A-Z][A-Za-z]+ [A-Z][A-Za-z]+\b'  # Mixed case names
+        ]
+        
+        name_matches = 0
+        for pattern in name_patterns:
+            name_matches += len(re.findall(pattern, text_content))
+        
+        if name_matches > 0:
+            score += min(name_matches * 5, 50)  # Bonus for employee names
         
         return score
     
@@ -700,22 +722,51 @@ class PDFProcessor:
         
         text_content = ' '.join(df.astype(str).values.flatten()).upper()
         
-        # Strong garbage indicators
+        # CRITICAL FIX: Strong garbage indicators including A/R balance tables
         garbage_indicators = [
             'BILLING INQUIRIES',
             'CUSTOMER SERVICE',
             'PAY YOUR BILL',
             'HTTP://MYACCOUNT',
-            'INVOICE\nCUSTOMER SERVICE'
+            'INVOICE\nCUSTOMER SERVICE',
+            # A/R Balance table indicators
+            'A/R BALANCES AS OF',
+            'TOTAL DUE',
+            'CURRENT',
+            '1-30 DAYS',
+            '31-60 DAYS',
+            '61-90 DAYS',
+            '91-120 DAYS',
+            'OVER 120 DAYS'
         ]
         
         for indicator in garbage_indicators:
             if indicator in text_content:
                 return True
         
-        # Check if table has no line item characteristics
-        line_item_words = ['WEARER', 'ITEM', 'RATE', 'QTY', 'TOTAL', 'RENT']
+        # CRITICAL FIX: Specific check for A/R balance table pattern
+        ar_balance_pattern_count = 0
+        ar_balance_keywords = ['TOTAL DUE', 'CURRENT', '1-30 DAYS', '31-60 DAYS', 'OVER 120 DAYS']
+        for keyword in ar_balance_keywords:
+            if keyword in text_content:
+                ar_balance_pattern_count += 1
+        
+        # If we find 3 or more A/R balance keywords, it's definitely an A/R balance table
+        if ar_balance_pattern_count >= 3:
+            return True
+        
+        # Check if table has line item characteristics
+        line_item_words = ['WEARER', 'ITEM', 'RATE', 'QTY', 'TOTAL', 'RENT', 'DESCRIPTION']
         has_line_items = any(word in text_content for word in line_item_words)
+        
+        # CRITICAL FIX: Look for employee/wearer names (strong indicator of line item table)
+        import re
+        name_pattern = r'\b[A-Z][a-z]+ [A-Z][a-z]+\b'  # First Last name pattern
+        name_matches = len(re.findall(name_pattern, text_content))
+        
+        # If table has employee names, it's likely a line item table, not garbage
+        if name_matches > 2:  # Multiple employee names found
+            return False
         
         # If it's a large table with no line item indicators, it's likely garbage
         if rows > 10 and not has_line_items:
@@ -798,9 +849,7 @@ class PDFProcessor:
         Returns:
             List of LineItem objects extracted from tables
         """
-        # HYPOTHESIS 2 LOGGING: Line Item Parsing Logic - Extract from Tables
-        self.logger.info(f"[H2] Starting line item extraction from {len(tables)} tables")
-        
+
         line_items = []
         
         for table_idx, table in enumerate(tables):
@@ -843,12 +892,13 @@ class PDFProcessor:
                 if data_rows_processed <= 3:  # Log first 3 data rows for verification
                     self.logger.info(f"[H2] Table {table_idx + 1} data row {row_idx + 1}: {row}")
                 
-                line_item = self._parse_table_row_to_line_item(row, column_mapping, row_idx + 1)
-                if line_item:
-                    valid_line_items += 1
-                    line_items.append(line_item)
-                    if valid_line_items <= 3:  # Log first 3 parsed line items
-                        self.logger.info(f"[H2] Parsed line item {valid_line_items}: code={line_item.item_code}, desc={line_item.description}, rate={line_item.rate}")
+                parsed_line_items = self._parse_table_row_to_line_item(row, column_mapping, row_idx + 1)
+                if parsed_line_items:
+                    for line_item in parsed_line_items:
+                        valid_line_items += 1
+                        line_items.append(line_item)
+                        if valid_line_items <= 3:  # Log first 3 parsed line items
+                            self.logger.info(f"[H2] Parsed line item {valid_line_items}: code={line_item.item_code}, desc={line_item.description}, rate={line_item.rate}")
                 else:
                     self.logger.debug(f"[H2] Table {table_idx + 1} row {row_idx + 1}: failed to parse as line item")
             
@@ -951,9 +1001,9 @@ class PDFProcessor:
         
         return column_mapping
     
-    def _parse_table_row_to_line_item(self, row: List[str], column_mapping: Dict[str, int], line_number: int) -> Optional[LineItem]:
+    def _parse_table_row_to_line_item(self, row: List[str], column_mapping: Dict[str, int], line_number: int) -> List[LineItem]:
         """
-        Parse a table row into a LineItem object.
+        Parse a table row into LineItem objects, handling multi-line cells.
         
         Args:
             row: Table row data
@@ -961,11 +1011,75 @@ class PDFProcessor:
             line_number: Line number for debugging
             
         Returns:
+            List of LineItem objects if parsing successful, empty list otherwise
+        """
+
+        try:
+            line_items = []
+            
+            # CRITICAL FIX: Handle multi-line cells by splitting on newlines
+            # Check if any cells contain newlines (multi-line data)
+            has_multiline = any('\n' in str(cell) for cell in row)
+            
+            if has_multiline:
+                self.logger.info(f"[H2] Row {line_number} contains multi-line data, splitting into individual line items")
+                
+                # Split each cell by newlines and get the maximum number of lines
+                split_cells = []
+                max_lines = 0
+                
+                for cell in row:
+                    if cell and '\n' in str(cell):
+                        lines = [line.strip() for line in str(cell).split('\n') if line.strip()]
+                        split_cells.append(lines)
+                        max_lines = max(max_lines, len(lines))
+                    else:
+                        # Single value, repeat for all lines
+                        split_cells.append([str(cell).strip() if cell else ''])
+                
+                self.logger.info(f"[H2] Row {line_number} split into {max_lines} individual line items")
+                
+                # Create individual line items from each line
+                for line_idx in range(max_lines):
+                    individual_row = []
+                    for cell_lines in split_cells:
+                        if line_idx < len(cell_lines):
+                            individual_row.append(cell_lines[line_idx])
+                        elif len(cell_lines) == 1:
+                            # Single value, use for all lines
+                            individual_row.append(cell_lines[0])
+                        else:
+                            individual_row.append('')
+                    
+                    # Parse this individual row
+                    line_item = self._parse_single_line_item(individual_row, column_mapping, f"{line_number}.{line_idx + 1}")
+                    if line_item:
+                        line_items.append(line_item)
+            else:
+                # Single line item
+                line_item = self._parse_single_line_item(row, column_mapping, line_number)
+                if line_item:
+                    line_items.append(line_item)
+            
+            self.logger.info(f"[H2] Row {line_number} SUCCESS: created {len(line_items)} line items")
+            return line_items
+            
+        except Exception as e:
+            self.logger.error(f"[H2] Row {line_number} ERROR: Exception parsing table row: {e}")
+            return []
+    
+    def _parse_single_line_item(self, row: List[str], column_mapping: Dict[str, int], line_number) -> Optional[LineItem]:
+        """
+        Parse a single row into a LineItem object.
+        
+        Args:
+            row: Single row data
+            column_mapping: Mapping of column purposes to indices
+            line_number: Line number for debugging
+            
+        Returns:
             LineItem object if parsing successful, None otherwise
         """
-        # HYPOTHESIS 2 LOGGING: Line Item Parsing Logic - Parse Row to LineItem
-        self.logger.debug(f"[H2] Parsing row {line_number} with mapping {column_mapping}")
-        
         try:
             # Extract data based on column mapping
             item_code = None
@@ -1007,6 +1121,8 @@ class PDFProcessor:
                 self.logger.debug(f"[H2] Row {line_number} total_str: '{total_str}'")
                 if total_str:
                     try:
+                        # Clean up total string (remove extra spaces)
+                        total_str = total_str.replace('  ', '').strip()
                         total = Decimal(total_str)
                         self.logger.debug(f"[H2] Row {line_number} parsed total: {total}")
                     except (ValueError, InvalidOperation):
@@ -1044,7 +1160,7 @@ class PDFProcessor:
             return line_item
             
         except Exception as e:
-            self.logger.error(f"[H2] Row {line_number} ERROR: Exception parsing table row: {e}")
+            self.logger.error(f"[H2] Row {line_number} ERROR: Exception parsing single line item: {e}")
             return None
     
     def _parse_invoice_metadata(self, text: str, invoice_data: InvoiceData) -> None:

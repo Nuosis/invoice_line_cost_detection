@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.54] - 2025-08-28
+
+### Changes
+
+Modified files:
+  - Modified: cli/commands/invoice_commands.py
+  - Modified: processing/invoice_processor.py
+  - Modified: processing/pdf_processor.py
+  - Modified: processing/validation_engine.py
+New files:
+  - Added: docs/error_solving/invoice_line_extraction_investigation.md
+  - Added: docs/error_solving/report_generation_data_disconnect_investigation.md
+
+**Deployment:** 2025-08-28 11:04:18 PDT
+
+
 ## [1.0.53] - 2025-08-26
 
 ### Changes

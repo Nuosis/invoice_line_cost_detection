@@ -218,7 +218,6 @@ def process(ctx, input_path, output, format, collect_unknown,
             if default_location and default_location.strip():
                 # Expand desktop path if needed
                 if default_location.startswith('desktop/'):
-                    from pathlib import Path
                     desktop_path = Path.home() / 'Desktop'
                     default_location = str(desktop_path / default_location[8:])  # Remove 'desktop/' prefix
                 
