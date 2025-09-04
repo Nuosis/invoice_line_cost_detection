@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.55] - 2025-09-03
+
+### Changes
+
+Modified files:
+  - Modified: processing/pdf_processor.py
+  - Modified: processing/validation_engine.py
+  - Modified: test_validation/README.md
+  - Modified: test_validation/__init__.py
+  - Modified: test_validation/extract_invoice_text.py
+  - Modified: test_validation/extract_lines.py
+  - Modified: test_validation/extract_parts.py
+  - Modified: test_validation/extract_tables.py
+  - Modified: test_validation/extract_text.py
+  - Modified: test_validation/extraction.py
+  - Modified: test_validation/roo.md
+  - Modified: test_validation/validate_database.py
+  - Modified: test_validation/validate_invoice.py
+  - Modified: test_validation/validation.py
+New files:
+  - Added: diagnose_table_extraction.py
+  - Added: docs/error_solving/table_extraction_data_misalignment_investigation.md
+  - Added: docs/error_solving/table_extraction_persistent_misalignment_investigation.md
+  - Added: test_invoice_processing_flow.py
+
+**Deployment:** 2025-09-03 23:13:10 ADT
+
+
 ## [1.0.54] - 2025-08-28
 
 ### Changes

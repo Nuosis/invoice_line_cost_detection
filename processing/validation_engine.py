@@ -419,11 +419,15 @@ class ValidationEngine:
         Returns:
             Error line dictionary for CSV export
         """
+        # Extract values from the correct nested structure
+        db_fields = validated_part.get('database_fields', {})
+        line_fields = validated_part.get('lineitem_fields', {})
+        
         # Extract values with proper defaults
-        quantity = validated_part.get('quantity', 1) or 1
-        extracted_price = validated_part.get('extracted_price', 0) or 0
+        quantity = line_fields.get('quantity', 1) or 1
+        extracted_price = db_fields.get('authorized_price', 0) or 0
         database_price = validated_part.get('database_price', 0) or 0
-        line_total = validated_part.get('total', 0) or 0
+        line_total = line_fields.get('total', 0) or 0
         
         # Calculate totals if not available
         actual_total = line_total if line_total > 0 else (extracted_price * quantity)
@@ -432,9 +436,9 @@ class ValidationEngine:
         return {
             'invoice_number': invoice_metadata.get('invoice_number', 'UNKNOWN'),
             'invoice_date': invoice_metadata.get('invoice_date', ''),
-            'part_number': validated_part.get('part_number', ''),
-            'description': validated_part.get('description', ''),
-            'line_number': validated_part.get('line_number'),
+            'part_number': db_fields.get('part_number', ''),
+            'description': db_fields.get('description', ''),
+            'line_number': line_fields.get('line_number'),
             'qty': quantity,
             'actual_price': extracted_price,
             'expected_price': database_price,
@@ -442,7 +446,7 @@ class ValidationEngine:
             'expected_total': expected_total,
             'validation_status': validated_part.get('validation_status', ''),
             'validation_errors': '; '.join(validated_part.get('validation_errors', [])),
-            'raw_text': validated_part.get('raw_text', '')
+            'raw_text': line_fields.get('raw_text', '')
         }
 
 

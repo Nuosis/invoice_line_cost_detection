@@ -1024,32 +1024,173 @@ class PDFProcessor:
             if has_multiline:
                 self.logger.info(f"[H2] Row {line_number} contains multi-line data, splitting into individual line items")
                 
-                # Split each cell by newlines and get the maximum number of lines
+                # CRITICAL FIX: Track cell splitting behavior and fix misalignment
                 split_cells = []
                 max_lines = 0
                 
-                for cell in row:
+                for col_idx, cell in enumerate(row):
                     if cell and '\n' in str(cell):
                         lines = [line.strip() for line in str(cell).split('\n') if line.strip()]
                         split_cells.append(lines)
                         max_lines = max(max_lines, len(lines))
+                        # CRITICAL LOGGING: Track multi-line cell details
+                        self.logger.info(f"[INVESTIGATION] Row {line_number} Col {col_idx}: MULTI-LINE with {len(lines)} lines: {lines[:3]}...")
                     else:
                         # Single value, repeat for all lines
-                        split_cells.append([str(cell).strip() if cell else ''])
+                        single_value = str(cell).strip() if cell else ''
+                        split_cells.append([single_value])
+                        # CRITICAL LOGGING: Track single-value cell details
+                        self.logger.info(f"[INVESTIGATION] Row {line_number} Col {col_idx}: SINGLE-VALUE: '{single_value}'")
+                
+                # CRITICAL LOGGING: Summary of cell splitting results
+                cell_lengths = [len(cell_lines) for cell_lines in split_cells]
+                self.logger.info(f"[INVESTIGATION] Row {line_number} CELL LENGTHS: {cell_lengths}, MAX_LINES: {max_lines}")
+                
+                # CRITICAL FIX: Apply intelligent alignment for length mismatches
+                if len(set(cell_lengths)) > 1:
+                    self.logger.error(f"[INVESTIGATION] Row {line_number} LENGTH MISMATCH DETECTED! Cell lengths: {cell_lengths}")
+                    self.logger.info(f"[INVESTIGATION] Row {line_number} APPLYING INTELLIGENT ALIGNMENT FIX...")
+                    
+                    # Identify which columns are shorter and need alignment
+                    shorter_cols = [i for i, length in enumerate(cell_lengths) if length < max_lines]
+                    self.logger.info(f"[INVESTIGATION] Row {line_number} SHORTER COLUMNS: {shorter_cols}")
+                    
+                    # For each shorter column, find the best insertion points based on content patterns
+                    for col_idx in shorter_cols:
+                        missing_count = max_lines - len(split_cells[col_idx])
+                        self.logger.info(f"[INVESTIGATION] Row {line_number} Col {col_idx}: MISSING {missing_count} lines")
+                        
+                        # Strategy: Insert empty strings at positions where content patterns suggest missing data
+                        # Look for transitions in the reference column (column 1 - wearer names) to guide insertion
+                        if col_idx in [2, 4, 5] and len(split_cells) > 1:  # item_code, size, type columns
+                            reference_col = split_cells[1]  # wearer names column
+                            current_col = split_cells[col_idx]
+                            
+                            # HYPOTHESIS 1 FIX: Improved insertion position calculation for all invoice types
+                            # Strategy: Use wearer name transitions to intelligently distribute missing data insertions
+                            insertion_points = []
+                            wearer_transitions = []
+                            current_wearer = None
+                            
+                            self.logger.info(f"[H1_INSERTION] Row {line_number} Col {col_idx}: Starting IMPROVED insertion point calculation")
+                            self.logger.info(f"[H1_INSERTION] Row {line_number} Col {col_idx}: Reference column (wearers): {reference_col[:10]}...")
+                            self.logger.info(f"[H1_INSERTION] Row {line_number} Col {col_idx}: Current column before insertion: {current_col[:10]}...")
+                            
+                            # First pass: identify ALL wearer transitions with their positions
+                            for i, wearer in enumerate(reference_col):
+                                if wearer != current_wearer:
+                                    if current_wearer is not None:
+                                        wearer_transitions.append((i, current_wearer, wearer))
+                                        self.logger.info(f"[H1_INSERTION] Row {line_number} Col {col_idx}: Wearer transition at index {i}: '{current_wearer}' -> '{wearer}'")
+                                    current_wearer = wearer
+                            
+                            self.logger.info(f"[H1_INSERTION] Row {line_number} Col {col_idx}: Found {len(wearer_transitions)} wearer transitions")
+                            
+                            # Second pass: intelligently select insertion points
+                            # Strategy: Distribute insertions evenly across the data to minimize misalignment
+                            if len(wearer_transitions) >= missing_count:
+                                # We have enough transitions - select evenly distributed ones
+                                step = len(wearer_transitions) / missing_count
+                                for i in range(missing_count):
+                                    transition_idx = int(i * step)
+                                    if transition_idx < len(wearer_transitions):
+                                        insertion_points.append(wearer_transitions[transition_idx][0])
+                                
+                                self.logger.info(f"[H1_INSERTION] Row {line_number} Col {col_idx}: Selected evenly distributed transitions")
+                            else:
+                                # Not enough transitions - use all available transitions
+                                insertion_points = [idx for idx, _, _ in wearer_transitions]
+                                
+                                # If we still need more insertions, distribute them evenly in the remaining space
+                                remaining_insertions = missing_count - len(insertion_points)
+                                if remaining_insertions > 0:
+                                    # Add insertions at regular intervals in the data
+                                    data_length = len(current_col)
+                                    if data_length > 0:
+                                        interval = max(1, data_length // (remaining_insertions + 1))
+                                        for i in range(remaining_insertions):
+                                            pos = min((i + 1) * interval, data_length)
+                                            if pos not in insertion_points:
+                                                insertion_points.append(pos)
+                                
+                                self.logger.info(f"[H1_INSERTION] Row {line_number} Col {col_idx}: Used all transitions + distributed remaining")
+                            
+                            # Sort insertion points to maintain order
+                            insertion_points = sorted(set(insertion_points[:missing_count]))
+                            
+                            self.logger.info(f"[H1_INSERTION] Row {line_number} Col {col_idx}: Final insertion points: {insertion_points}")
+                            self.logger.info(f"[H1_INSERTION] Row {line_number} Col {col_idx}: Will use {len(insertion_points)} of {missing_count} needed insertions")
+                            
+                            # Insert empty strings at identified points (in reverse order to maintain indices)
+                            for point in reversed(insertion_points[:missing_count]):
+                                self.logger.info(f"[H1_INSERTION] Row {line_number} Col {col_idx}: BEFORE insertion at {point}: {split_cells[col_idx][:point+2]}")
+                                split_cells[col_idx].insert(point, '')
+                                self.logger.info(f"[H1_INSERTION] Row {line_number} Col {col_idx}: AFTER insertion at {point}: {split_cells[col_idx][:point+3]}")
+                                self.logger.info(f"[INVESTIGATION] Row {line_number} Col {col_idx}: INSERTED empty at position {point}")
+                            
+                            # If we still need more insertions, add at the end
+                            remaining = missing_count - len(insertion_points[:missing_count])
+                            if remaining > 0:
+                                split_cells[col_idx].extend([''] * remaining)
+                                self.logger.info(f"[INVESTIGATION] Row {line_number} Col {col_idx}: PADDED {remaining} at end")
+                        else:
+                            # Fallback: simple padding at the end
+                            padding_needed = missing_count
+                            split_cells[col_idx].extend([''] * padding_needed)
+                            self.logger.info(f"[INVESTIGATION] Row {line_number} Col {col_idx}: SIMPLE PADDING {padding_needed} at end")
+                    
+                    # Verify alignment worked
+                    aligned_lengths = [len(cell) for cell in split_cells]
+                    self.logger.info(f"[INVESTIGATION] Row {line_number} AFTER ALIGNMENT: {aligned_lengths}")
+                else:
+                    self.logger.info(f"[INVESTIGATION] Row {line_number} ALL CELLS HAVE CONSISTENT LENGTHS")
                 
                 self.logger.info(f"[H2] Row {line_number} split into {max_lines} individual line items")
                 
-                # Create individual line items from each line
+                # CRITICAL FIX: Create individual line items with proper data alignment
                 for line_idx in range(max_lines):
                     individual_row = []
-                    for cell_lines in split_cells:
+                    for col_idx, cell_lines in enumerate(split_cells):
                         if line_idx < len(cell_lines):
+                            # Use the specific line for this item
                             individual_row.append(cell_lines[line_idx])
                         elif len(cell_lines) == 1:
-                            # Single value, use for all lines
+                            # Single value, use for all lines (like header data)
                             individual_row.append(cell_lines[0])
                         else:
+                            # CRITICAL FIX: No data for this line, use empty string
                             individual_row.append('')
+                    
+                    # HYPOTHESIS 3 LOGGING: Test cell splitting logic and data alignment
+                    if line_idx >= 15 and line_idx <= 25:  # Focus on JOSEPH HENRY problem area
+                        item_code = individual_row[column_mapping.get('item_code', 2)] if len(individual_row) > 2 else 'N/A'
+                        rate = individual_row[column_mapping.get('rate', 7)] if len(individual_row) > 7 else 'N/A'
+                        item_type = individual_row[column_mapping.get('type', 5)] if len(individual_row) > 5 else 'N/A'
+                        description = individual_row[column_mapping.get('description', 3)] if len(individual_row) > 3 else 'N/A'
+                        
+                        # CRITICAL: Check for data content misalignment
+                        is_shirt_code = 'GS' in item_code if item_code != 'N/A' else False
+                        is_pant_desc = 'PANT' in description if description != 'N/A' else False
+                        is_shirt_desc = 'SHIRT' in description if description != 'N/A' else False
+                        is_ruin_charge = item_type == 'Ruin charge' if item_type != 'N/A' else False
+                        is_high_rate = float(rate) > 10.0 if rate != 'N/A' and rate.replace('.', '').isdigit() else False
+                        
+                        # Log data content alignment issues
+                        if is_shirt_code and is_pant_desc:
+                            self.logger.error(f"[H3_CONTENT] Line {line_idx}: SHIRT CODE + PANT DESC MISMATCH! code='{item_code}', desc='{description[:40]}'")
+                        if is_shirt_code and is_high_rate and not is_ruin_charge:
+                            self.logger.error(f"[H3_CONTENT] Line {line_idx}: SHIRT CODE + HIGH RATE + WRONG TYPE! code='{item_code}', rate='{rate}', type='{item_type}'")
+                        if is_pant_desc and is_high_rate and item_type == 'Rent':
+                            self.logger.error(f"[H3_CONTENT] Line {line_idx}: PANT DESC + HIGH RATE + RENT TYPE! desc='{description[:40]}', rate='{rate}', type='{item_type}'")
+                        
+                        self.logger.info(f"[H3_CONTENT] Line {line_idx}: code='{item_code}', desc='{description[:30]}...', rate='{rate}', type='{item_type}'")
+                    
+                    # CRITICAL FIX: Validate that we have enough data for a valid line item
+                    # Skip rows that are mostly empty or don't have essential columns
+                    non_empty_cells = sum(1 for cell in individual_row if cell.strip())
+                    if non_empty_cells < 3:  # Need at least 3 non-empty cells for a valid line item
+                        self.logger.debug(f"[H2] Row {line_number}.{line_idx + 1} SKIPPED: insufficient data ({non_empty_cells} non-empty cells)")
+                        continue
                     
                     # Parse this individual row
                     line_item = self._parse_single_line_item(individual_row, column_mapping, f"{line_number}.{line_idx + 1}")
